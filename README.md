@@ -1,4 +1,5 @@
 # Primeiro projeto Node
+
 ```bash
 mkdir primeiro-projeto-node
 cd primeiro-projeto-node
@@ -84,6 +85,7 @@ E para evitar de ficar conferindo se está com erro ou não, adicionar `--transp
 ```
 
 **EditorConfig**
+
 Adicionar a extensão EditorConfig no VSCode e na raiz do projeto, clicar com botão direito do mouse e selecionar `Generate .editorconfig`
 ```
 root = true
@@ -98,6 +100,7 @@ insert_final_newline = true
 ```
 
 **ESLint**
+
 Instalar o eslint como dependência de desenvolvimento
 ```bash
 yarn add eslint -D
@@ -119,6 +122,7 @@ Do you like to install them now with npm? (Y/n) n
 yarn add -D @typescript-eslint/eslint-plugin@latest eslint-config-airbnb-base@latest eslint-plugin-import@^2.20.1 @typescript-eslint/parser@latest
 ```
 Já criou o `.eslintrc.json` com algumas configurações.
+
 Agora adicionar o eslint no VSCode no JSON de Settings:
 ```json
 {
@@ -201,6 +205,7 @@ app.listen(3333, () => {
 ```
 
 **Prettier**
+
 Adiciona as dependências do Prettier
 ```bash
 yarn add -D prettier eslint-config-prettier eslint-plugin-prettier
@@ -232,6 +237,7 @@ Adicionar algumas configurações no `.eslintrc.json`
 ```
 
 Abrir os arquivos e ver os erros que já estão apontando pelo Prettier. Ao salvar, já arrumou algumas coisas, porém conflitou com ESLint em outras. Como, por exemplo, trocou as aspas simples por aspas duplas.
+
 Adicionar na raiz do projeto um arquivo `prettier.config.js`
 ```js
 module.exports = {
@@ -250,6 +256,7 @@ dist
 
 **Debugando NodeJS**
 Sem ser por `console.log`, no VSCode tem o botão de um 'bug' e é só clicar em *'create a launch.json file'* e selecionar Node.js.
+
 Altera as configurações
 ```json
 "configurations": [
@@ -282,6 +289,7 @@ Mas o debugger ainda não está conseguindo ser executado enquanto a aplicação
 ```
 
 E agora, enquanto roda a aplicação, já aparece `Debugger listening on ws://127.0.0.1:9229/....` e é só clicar no play do Debugger.
+
 Na aba `DEBUG CONSOLE` já está rodando nosso Debugger.
 
 **Como funciona o Debug?**
@@ -304,15 +312,104 @@ export default routes;
 ```
 
 E ao rodar isso no Insomnia, dá um erro 500.
+
 Para fazer debug pelo VSCode, é só adicionar a bolinha vermelha na linha do `request.body`, salvo e faço a requisição pelo Insomnia.
+
 No 'VARIABLES' não aparece o `body` dentro do `request`.
+
 No 'WATCH' do VSCode, adicionar o `request.body` e já vemos que está undefined.
+
 Se adicionar, por exemplo, o `request.query` vai mostrar um objeto vazio.
+
 Faltou adicionar no `server` o formato json na aplicação
 ```ts
 app.use(express.json());
 ```
 
 O 'CALL STACK' mostra tudo que foi executado até chegar nesse ponto do debug.
+
 O 'LOADED SCRIPTS' mostra todos arquivos executados.
+
 O 'BREAKPOINTS' deixa remover alguns breakpoints de forma manual e para exceções ou erros cairem como breakpoints também.
+
+---
+## GoBarber
+
+### Agendamento (Appointments)
+
+Limpar a `src/routes/index.ts` e criar o arquivo `src/routes/appointments.routes.ts`
+```ts
+import { Router } from 'express';
+
+const appointmentsRouter = Router();
+
+export default appointmentsRouter;
+```
+
+No `src/routes/index.ts`, vamos direcionar todas as rotas `'/appointments'` para o `appointmentsRouter`
+```ts
+import { Router } from 'express';
+import appointmentsRouter from './appointments.routes';
+
+const routes = Router();
+
+routes.use('/appointments', appointmentsRouter);
+
+export default routes;
+```
+
+Como toda rota `'/appointments'` cai em `appointmentsRouter`, então, nesse caso a rota do `post` é somente `'/'`
+```ts
+import { Router } from 'express';
+
+const appointmentsRouter = Router();
+
+appointmentsRouter.post('/', (request, response) => {
+  return response.json({ message: 'Hello World' });
+});
+
+export default appointmentsRouter;
+```
+
+(Configuração de workspace GoBarber no Insomnia)
+
+**Rota de POST**
+
+Para criar um `appointment`, iremos utilizar o nome do profissional (provider) e a data (date) do atendimento.
+
+Nossa aplicação tem que criar um `id` para cada atendimento. Dessa forma, vamos adicionar a dependência uuidv4 (unique universal id)
+```bash
+yarn add uuidv4
+```
+
+Por enquanto, não estamos persistindo os dados num banco. Então, continuamos adicionando cada novo `appointment` no array `appointments`
+```ts
+import { Router } from 'express';
+import { uuid } from 'uuidv4';
+
+const appointmentsRouter = Router();
+
+const appointments = [];
+
+appointmentsRouter.post('/', (request, response) => {
+  const { provider, date } = request.body;
+
+  const appointment = {
+    id: uuid(),
+    provider,
+    date,
+  };
+
+  appointments.push(appointment);
+
+  return response.json(appointment);
+});
+```
+
+Testar a requisição de `post` pelo Insomnia, que já ajuda na criação de body com um `Timestamp` no formato correto
+```json
+{
+	"provider": "Cintia",
+	"date": "Timestamp => ISO-8601"
+}
+```
