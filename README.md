@@ -413,3 +413,71 @@ Testar a requisição de `post` pelo Insomnia, que já ajuda na criação de bod
 	"date": "Timestamp => ISO-8601"
 }
 ```
+
+**Validação da data**
+
+Permitir que os agendamentos ocorram somente em hora cheia.
+
+Instalar o pacote `date-fns`
+```bash
+yarn add date-fns
+```
+
+Importar métodos `startOfHour`, que vai pegar a data e deixar no início da hora (sem minutos e sem segundos), e `parseISO`, que vai converter a data que vem em formato `string` para formato `Date` do Javascript.
+```ts
+import { Router } from 'express';
+import { uuid } from 'uuidv4';
+import { startOfHour, parseISO } from 'date-fns';
+
+const appointmentsRouter = Router();
+
+const appointments = [];
+
+appointmentsRouter.post('/', (request, response) => {
+  const { provider, date } = request.body;
+
+  const parsedDate = startOfHour(parseISO(date));
+
+  const appointment = {
+    id: uuid(),
+    provider,
+    date: parsedDate,
+  };
+
+  appointments.push(appointment);
+
+  return response.json(appointment);
+});
+
+export default appointmentsRouter;
+```
+
+Permitir que só haja 1 atendimento por horário.
+```ts
+// ...
+import { startOfHour, parseISO, isEqual } from 'date-fns';
+
+// ...
+  const findAppointmentInSameDate = appointments.find(appointment =>
+    isEqual(parsedDate, appointment.date),
+  );
+
+  if (findAppointmentInSameDate) {
+    return response
+      .status(400)
+      .json({ message: 'The appointment hour is not available.' });
+  }
+// ...
+```
+
+Inserindo tipagem
+```ts
+interface Appointment {
+  id: string;
+  provider: string;
+  date: Date;
+}
+
+const appointments: Appointment[] = [];
+```
+
