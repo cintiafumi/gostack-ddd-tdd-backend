@@ -481,3 +481,38 @@ interface Appointment {
 const appointments: Appointment[] = [];
 ```
 
+**Model de Agendamento**
+
+Model, ou entidade, é o formato de um dado que vai ser armazenado.
+
+Criar uma pasta `src/models` com o arquivo `Appointment.ts` e vamos escrevê-lo na forma de `class`
+```ts
+import { uuid } from 'uuidv4';
+
+class Appointment {
+  id: string;
+
+  provider: string;
+
+  date: Date;
+
+  constructor(provider: string, date: Date) {
+    this.id = uuid();
+    this.provider = provider;
+    this.date = date;
+  }
+}
+
+export default Appointment;
+```
+
+Agora é só importar esse objeto no arquivo `src/routes/appointments.routes.ts`
+```ts
+// ...
+import Appointment from '../models/Appointment';
+
+// Remover interface Appointment
+// ...
+  const appointment = new Appointment(provider, parsedDate);
+// ...
+```
