@@ -516,3 +516,80 @@ import Appointment from '../models/Appointment';
   const appointment = new Appointment(provider, parsedDate);
 // ...
 ```
+
+**Repositórios**
+
+Persistência <-> Repositório <-> Rota
+
+O Repositório é uma conexão entre a Persistência dos nossos dados com a nossa Rota.
+
+Dentro do Repositório terei os métodos, por exemplo:
+- find
+- create
+
+que irão criar, armazenar, ler, deletar, alterar os dados de Appointment.
+
+Para cada `model` teremos um `repository`. Então, criamos o arquivo `src/repositories/AppointmentsRepository.ts` e construímos sua `class`
+```ts
+import Appointment from '../models/Appointment';
+
+class AppointmentsRepository {
+  private appointments: Appointment[];
+
+  constructor() {
+    this.appointments = [];
+  }
+
+  /**
+   * create new appointment
+   */
+  public create(provider: string, date: Date): Appointment {
+    const appointment = new Appointment(provider, date);
+
+    this.appointments.push(appointment);
+
+    return appointment;
+  }
+}
+
+export default AppointmentsRepository;
+```
+O array de `appointments` está como `private`, pois não pode ser acessível por fora da classe. E passo o método de `create` para dentro desse `repository`
+
+Em `src/routes/appointments.routes.ts`
+```ts
+// ...
+import AppointmentsRepository from '../repositories/AppointmentsRepository';
+// ...
+  const appointment = appointmentsRepository.create(provider, parsedDate);
+// ...
+```
+
+Como `appointments` é uma informação privada, temos que mover a busca pela data existente para dentro da `class` também
+
+```ts
+import { isEqual } from 'date-fns';
+
+//...
+  public findByDate(date: Date): Appointment | null {
+    const findAppointment = this.appointments.find(appointment =>
+      isEqual(date, appointment.date),
+    );
+
+    return findAppointment || null;
+  }
+// ...
+```
+
+E em `src/repositories/appointments.models.ts` alteramos
+```ts
+// ...
+  const findAppointmentInSameDate = appointmentsRepository.findByDate(
+    parsedDate,
+  );
+// ...
+```
+
+Ou seja, movemos para um arquivo repositório tudo que vai mexer na informação dos agendamentos. O repositório é detentor das operações realizadas em cima do nosso banco de dados, livrando a rota dessas responsabilidades.
+
+Dessa forma, deixamos a responsabilidade do formato dos dados para `models` e a responsabilidade da maneira como os dados serão armazenados `repositories`
