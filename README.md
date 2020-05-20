@@ -593,3 +593,24 @@ E em `src/repositories/appointments.models.ts` alteramos
 Ou seja, movemos para um arquivo repositório tudo que vai mexer na informação dos agendamentos. O repositório é detentor das operações realizadas em cima do nosso banco de dados, livrando a rota dessas responsabilidades.
 
 Dessa forma, deixamos a responsabilidade do formato dos dados para `models` e a responsabilidade da maneira como os dados serão armazenados `repositories`
+
+**Rota GET**
+Listagem de agendamentos
+`src/repositories/AppointmentsRepository.ts`
+```ts
+  public all(): Appointment[] {
+    return this.appointments;
+  }
+```
+
+`src/routes/appointments.routes.ts`
+```ts
+appointmentsRouter.get('/', (request, response) => {
+  const appointments = appointmentsRepository.all();
+
+  return response.json(appointments);
+});
+```
+
+**SoC**
+Separation of Concerns: Separação de preocupações, onde a rota tem que ter apenas uma preocupação.

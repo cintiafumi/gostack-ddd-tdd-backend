@@ -9,6 +9,13 @@ class AppointmentsRepository {
   }
 
   /**
+   * List all appointments
+   */
+  public all(): Appointment[] {
+    return this.appointments;
+  }
+
+  /**
    * find an appointment by given date
    */
   public findByDate(date: Date): Appointment | null {
