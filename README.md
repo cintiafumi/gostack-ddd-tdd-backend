@@ -227,6 +227,7 @@ export default class CreateAppointments1589991332947
             type: 'varchar',
             isPrimary: true,
             generationStrategy: 'uuid',
+            default: 'uuid_generate_v4()',
           },
           {
             name: 'provider',
@@ -307,3 +308,140 @@ class Appointment {
 
 export default Appointment;
 ```
+
+
+### TypeORM Repository
+O TypeORM já vem com um `repository`, então podemos excluir do código a parte do `constructor` e métodos `all` e `create`.
+
+Só deixamos o método `findByDate` por enquanto e importamos `EntityRepository` e `Repository` de `typeorm`.
+
+Fazendo a alteração do método `findByDate`
+```ts
+import { EntityRepository, Repository } from 'typeorm';
+
+import Appointment from '../models/Appointment';
+
+@EntityRepository(Appointment)
+class AppointmentsRepository extends Repository<Appointment> {
+  /**
+   * find an appointment by given date
+   */
+  public async findByDate(date: Date): Promise<Appointment | null> {
+    const findAppointment = await this.findOne({
+      where: { date },
+    });
+
+    return findAppointment || null;
+  }
+}
+
+export default AppointmentsRepository;
+```
+
+Agora vamos alterar o `src/services/CreateAppointmentService.ts`
+```ts
+import { startOfHour } from 'date-fns';
+import { getCustomRepository } from 'typeorm';
+
+import Appointment from '../models/Appointment';
+import AppointmentsRepository from '../repositories/AppointmentsRepository';
+
+interface Request {
+  provider: string;
+  date: Date;
+}
+
+class CreateAppointmentService {
+  /**
+   * execute
+   */
+  public async execute({ provider, date }: Request): Promise<Appointment> {
+    const appointmentsRepository = getCustomRepository(AppointmentsRepository);
+    const appointmentDate = startOfHour(date);
+
+    const findAppointmentInSameDate = appointmentsRepository.findByDate(
+      appointmentDate,
+    );
+
+    if (findAppointmentInSameDate) {
+      throw Error('The appointment hour is not available.');
+    }
+
+    const appointment = appointmentsRepository.create({
+      provider,
+      date: appointmentDate,
+    });
+
+    await appointmentsRepository.save(appointment);
+
+    return appointment;
+  }
+}
+
+export default CreateAppointmentService;
+```
+
+Agora vamos alterar a rota `src/routes/appointments.routes.ts`
+```ts
+import { Router } from 'express';
+import { parseISO } from 'date-fns';
+import { getCustomRepository } from 'typeorm';
+
+import AppointmentsRepository from '../repositories/AppointmentsRepository';
+import CreateAppointmentService from '../services/CreateAppointmentService';
+
+const appointmentsRouter = Router();
+
+appointmentsRouter.get('/', (request, response) => {
+  const appointmentsRepository = getCustomRepository(AppointmentsRepository);
+  const appointments = appointmentsRepository.find();
+
+  return response.json(appointments);
+});
+
+appointmentsRouter.post('/', async (request, response) => {
+  try {
+    const { provider, date } = request.body;
+
+    const parsedDate = parseISO(date);
+
+    const createAppointment = new CreateAppointmentService();
+
+    const appointment = await createAppointment.execute({
+      provider,
+      date: parsedDate,
+    });
+
+    return response.json(appointment);
+  } catch (err) {
+    return response.status(400).json({ error: err.message });
+  }
+});
+
+export default appointmentsRouter;
+```
+
+E agora vamos rodar a aplicação
+```bash
+yarn dev:server
+```
+
+Deu um erro, pois precisamos instalar uma dependência
+```bash
+yarn add reflect-metadata
+```
+E adicionar no `server.ts` na primeira linha
+```ts
+import 'reflect-metadata';
+```
+
+E adicionar em `ormconfig.json`
+```json
+{
+    "entities": [
+    "./src/models/*.ts"
+  ],
+}
+```
+
+Roda a aplicação e confere a criação e listagem dos `appointments` no banco. =)
