@@ -658,3 +658,99 @@ Omit é uma função helper do Typescript que ajuda na tipagem. Ela recebe dois 
     const appointment = new Appointment({ provider, date });
 // ...
 ```
+
+**Services**
+
+Services vai armazenar a regra de negócios da nossa aplicação.
+
+Identificamos que existe uma regra de negócios se tem algo muito específico da minha aplicação.
+É como se tivesse if e else.
+
+Nossa Rota tem que estar preocupada em apenas: receber a requisição, chamar outro arquivo para tratar a requisição, e devolver uma resposta.
+
+Sempre que tiver alguma condição além do que é a responsabilidade da Rota, deve ser um `service`.
+
+Para abstrair o Service, ele tem apenas e unicamente 1 funcionalidade.
+
+Criar o arquivo `src/services/CreateAppointmentService.ts` com uma `class` que terá apenas 1 método `execute` que vai então ser responsável pela criação de um agendamento.
+
+Separar o que é transformação de dado (`parsedDate`) do que é regra de negócio (`appointmentDate`) de dentro da rota.
+
+Ao transferir o código contendo regra de negócio da `route` para o `service`, temos que resolver:
+- Recebimento das informações: Criar uma interface DTO do `Request` contendo `provider` e `date`
+- Tratativa de erros/exceções: Jogar um `throw Error`, pois o `service` não tem acesso ao `response`
+- Acesso ao repositório:
+
+**Dependency Inversion (SOLID)**
+
+Sempre que o `service` tiver uma dependência externa, ex: `appointmentsRepository`, ao invés de instanciar novamente, vamos recebê-lo como um parâmetro dessa `class`
+
+```ts
+import { startOfHour } from 'date-fns';
+
+import Appointment from '../models/Appointment';
+import AppointmentsRepository from '../repositories/AppointmentsRepository';
+
+interface Request {
+  provider: string;
+  date: Date;
+}
+
+class CreateAppointmentService {
+  private appointmentsRepository: AppointmentsRepository;
+
+  constructor(appointmentsRepository: AppointmentsRepository) {
+    this.appointmentsRepository = appointmentsRepository;
+  }
+
+  /**
+   * execute
+   */
+  public execute({ provider, date }: Request): Appointment {
+    const appointmentDate = startOfHour(date);
+
+    const findAppointmentInSameDate = this.appointmentsRepository.findByDate(
+      appointmentDate,
+    );
+
+    if (findAppointmentInSameDate) {
+      throw Error('The appointment hour is not available.');
+    }
+
+    const appointment = this.appointmentsRepository.create({
+      provider,
+      date: appointmentDate,
+    });
+
+    return appointment;
+  }
+}
+
+export default CreateAppointmentService;
+```
+
+E em `src/routes/appointments.routes.ts`
+```ts
+// ...
+appointmentsRouter.post('/', (request, response) => {
+  try {
+    const { provider, date } = request.body;
+
+    const parsedDate = parseISO(date);
+
+    const createAppointment = new CreateAppointmentService(
+      appointmentsRepository,
+    );
+
+    const appointment = createAppointment.execute({
+      provider,
+      date: parsedDate,
+    });
+
+    return response.json(appointment);
+  } catch (err) {
+    return response.status(400).json({ error: err.message });
+  }
+});
+// ...
+```
