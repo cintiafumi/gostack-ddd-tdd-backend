@@ -267,3 +267,43 @@ Para desfazer a migration
 ```bash
 yarn typeorm migration:revert
 ```
+
+### Model de Agendamento
+
+Relacionar o model de agendamentos com o banco de dados.
+
+`Entity` é um `model` que vai ser salvo no banco de dados.
+
+Em `tsconfig.json` habilitar as opções de `decorator` no Typescript
+```json
+{
+  "experimentalDecorators": true,
+  "emitDecoratorMetadata": true,
+}
+```
+
+Aviso que toda vez que for salvo `Appointment`, será na tabela `appointments`. Adicionar `Entity`, `Column` e `PrimaryGeneratedColumn`. Agora não precisaremos mais do `constructor` pois a `Entity` já cria automaticamente. E desabilitar no `tsconfig.json`
+```json
+{
+  "strictPropertyInitialization": false,
+}
+```
+
+Em `src/models/Appointment.ts`
+```ts
+import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
+
+@Entity('appointments')
+class Appointment {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  provider: string;
+
+  @Column('timestamp with time zone')
+  date: Date;
+}
+
+export default Appointment;
+```
