@@ -613,4 +613,48 @@ appointmentsRouter.get('/', (request, response) => {
 ```
 
 **SoC**
+
 Separation of Concerns: Separação de preocupações, onde a rota tem que ter apenas uma preocupação.
+
+
+**DTO**
+
+Data Transfer Object: para transferir um dado de um arquivo para o outro, é sempre melhor tranferir um Objeto no Javascript.
+
+Ao invés de enviar dois ou mais parâmetros, é melhor enviar um só e fazer a desestruturação.
+Mudamos a estrutura para **parâmetros nomeados**.
+
+```ts
+interface CreateAppointment {
+  provider: string;
+  date: Date;
+}
+// ...
+  public create({ provider, date }: CreateAppointment): Appointment {
+// ...
+```
+
+```ts
+  const appointment = appointmentsRepository.create({
+    provider,
+    date: parsedDate,
+  });
+```
+
+**Omit**
+
+Omit é uma função helper do Typescript que ajuda na tipagem. Ela recebe dois parâmetros: o tipo e a variável que quero omitir de dentro desse tipo.
+`src/routes/appointments.routes.ts`
+```ts
+// ...
+  constructor({ provider, date }: Omit<Appointment, 'id'>) {
+// ...
+```
+
+`src/repositories/AppointmentsRepository.ts`
+```ts
+// ...
+  public create({ provider, date }: CreateAppointment): Appointment {
+    const appointment = new Appointment({ provider, date });
+// ...
+```
