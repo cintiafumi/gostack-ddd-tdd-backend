@@ -392,9 +392,9 @@ import CreateAppointmentService from '../services/CreateAppointmentService';
 
 const appointmentsRouter = Router();
 
-appointmentsRouter.get('/', (request, response) => {
+appointmentsRouter.get('/', async (request, response) => {
   const appointmentsRepository = getCustomRepository(AppointmentsRepository);
-  const appointments = appointmentsRepository.find();
+  const appointments = await appointmentsRepository.find();
 
   return response.json(appointments);
 });
@@ -445,3 +445,112 @@ E adicionar em `ormconfig.json`
 ```
 
 Roda a aplicação e confere a criação e listagem dos `appointments` no banco. =)
+
+
+## Cadastro de Usuário
+### Model e migration de usuário
+Vamos criar a tabela de Users
+```bash
+yarn typeorm migration:create -n CreateUsers
+```
+
+E vamos configurar a tabela no arquivo `src/database/migrations/1590094902911-CreateUsers.ts`
+```ts
+import { MigrationInterface, QueryRunner, Table } from 'typeorm';
+
+export default class CreateUsers1590094902911 implements MigrationInterface {
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.createTable(
+      new Table({
+        name: 'users',
+        columns: [
+          {
+            name: 'id',
+            type: 'varchar',
+            isPrimary: true,
+            generationStrategy: 'uuid',
+            default: 'uuid_generate_v4()',
+          },
+          {
+            name: 'name',
+            type: 'varchar',
+          },
+          {
+            name: 'email',
+            type: 'varchar',
+            isUnique: true,
+          },
+          {
+            name: 'password',
+            type: 'varchar',
+          },
+          {
+            name: 'created_at',
+            type: 'timestamp',
+            default: 'now()',
+          },
+          {
+            name: 'updated_at',
+            type: 'timestamp',
+            default: 'now()',
+          },
+        ],
+      }),
+    );
+  }
+
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.dropTable('users');
+  }
+}
+```
+
+Criar o arquivo `src/models/User.ts`
+```bash
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+
+@Entity('users')
+export default class User {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  name: string;
+
+  @Column()
+  email: string;
+
+  @Column()
+  password: string;
+
+  @CreateDateColumn()
+  created_at: Date;
+
+  @UpdateDateColumn()
+  updated_at: Date;
+}
+```
+
+E aproveitar para adicionar esses campos de `created_at` e `updated_at` na migration da tabela `appointments` assim como em `src/models/Appointment.ts`.
+
+Rodar o `revert` até que delete a tabela de `appointments` também.
+```bash
+yarn typeorm migration:revert
+```
+
+Rodar o `run` novamente
+```bash
+yarn typeorm migration:run
+```
+
+### Relacionamento nos models
+
+### Criação de registros
+
+### Criptografia de senha
