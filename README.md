@@ -841,5 +841,27 @@ Adiciona no eslint para aceitar `provider_id` sem ser camel case:
 
 Faz um POST de um `appointment` agora com `provider_id` ao invés de `provider` no `body` da requisição da rota `'/appointments'`
 
-
 ### Criptografia de senha
+Instalar biblioteca `bcryptjs` e seu types
+```bash
+yarn add bcryptjs
+yarn add -D @types/bcryptjs
+```
+
+Importar o `hash` em `src/services/CreateUserService.ts`
+```ts
+import { hash } from 'bcryptjs';
+// ...
+    const hashedPassword = await hash(password, 8);
+
+    const user = usersRepository.create({
+      name,
+      email,
+      password: hashedPassword,
+    });
+// ...
+```
+
+Criar um user pelo Insomnia com email diferente e verificar se encriptou a senha antes de salvar no banco. Como não é bom trazer a senha no retorno do request, remover das rotas o password antes de trazer o retorno. Mas se ver no DBeaver, a senha estará lá.
+
+Para zerar a base de dados pelo DBeaver, selecione e delete as 3 linhas de users criado, e salva a tabela. E cria um user novo 'limpo'.
