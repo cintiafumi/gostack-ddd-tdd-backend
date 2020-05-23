@@ -642,7 +642,204 @@ No `src/models/Appointments.ts` fazer o relacionamento com user, sendo ManyToOne
 
 KISS - Keep It Simple & Stupid
 
-
 ### Criação de registros
+Criação da rota de `users` em `src/routes/users.routes.ts` bem simples
+```ts
+import { Router } from 'express';
+
+const usersRouter = Router();
+
+usersRouter.post('/', async (request, response) => {
+  try {
+    return response.send();
+  } catch (err) {
+    return response.status(400).json({ error: err.message });
+  }
+});
+
+export default usersRouter;
+```
+
+Importa no `src/routes/index.ts`
+```ts
+// ...
+import usersRouter from './users.routes';
+// ...
+routes.use('/users', usersRouter);
+// ...
+```
+
+Criar o service `src/services/CreateUserService.ts`.
+
+Se eu não tenho nenhum método personalizado, eu não preciso criar o Repository. Basta de dentro do Service importar o `typeorm` com o `getRepository`. Mesmo que exista a regra de negócios no banco de dados, essa regra tem que estar na nossa aplicação. Então, para validar se o e-mail já existe ou não, colocamos no Service essa regra de verificação.
+```ts
+import { getRepository } from 'typeorm';
+import User from '../models/User';
+
+interface Request {
+  name: string;
+  email: string;
+  password: string;
+}
+
+class CreateUserService {
+  public async execute({ name, email, password }: Request): Promise<User> {
+    const userRepository = getRepository(User);
+
+    const checkUserExists = await userRepository.findOne({
+      where: { email },
+    });
+
+    if (checkUserExists) {
+      throw new Error('E-mail address already used.');
+    }
+
+    const user = userRepository.create({
+      name,
+      email,
+      password,
+    });
+
+    await userRepository.save(user);
+
+    return user;
+  }
+}
+
+export default CreateUserService;
+```
+
+E agora importo o `createUserService` dentro do `routes`
+```ts
+import { Router } from 'express';
+
+import CreateUserService from '../services/CreateUserService';
+
+const usersRouter = Router();
+
+usersRouter.post('/', async (request, response) => {
+  try {
+    const { name, email, password } = request.body;
+
+    const createUser = new CreateUserService();
+
+    const user = await createUser.execute({
+      name,
+      email,
+      password,
+    });
+    return response.json(user);
+  } catch (err) {
+    return response.status(400).json({ error: err.message });
+  }
+});
+
+export default usersRouter;
+```
+
+Configurar o Insomnia para criar um `user`: requisição de POST na rota `'/users'` e com `body`
+```json
+{
+	"name": "Cintia",
+	"email": "cintiafumi@gmail.com",
+	"password": "123456"
+}
+```
+
+Verifica no DBeaver e está lá na tabela de `users`.
+
+Para criar um `appointment` temos que alterar `provider` para `provider_id` no `CreateAppointmentService` e no `appointments.routes`
+```ts
+import { startOfHour } from 'date-fns';
+import { getCustomRepository } from 'typeorm';
+
+import Appointment from '../models/Appointment';
+import AppointmentsRepository from '../repositories/AppointmentsRepository';
+
+interface Request {
+  provider_id: string;
+  date: Date;
+}
+
+class CreateAppointmentService {
+  public async execute({ provider_id, date }: Request): Promise<Appointment> {
+    const appointmentsRepository = getCustomRepository(AppointmentsRepository);
+    const appointmentDate = startOfHour(date);
+
+    const findAppointmentInSameDate = await appointmentsRepository.findByDate(
+      appointmentDate,
+    );
+
+    if (findAppointmentInSameDate) {
+      throw Error('The appointment hour is not available.');
+    }
+
+    const appointment = appointmentsRepository.create({
+      provider_id,
+      date: appointmentDate,
+    });
+
+    await appointmentsRepository.save(appointment);
+
+    return appointment;
+  }
+}
+
+export default CreateAppointmentService;
+```
+
+```ts
+import { Router } from 'express';
+import { parseISO } from 'date-fns';
+import { getCustomRepository } from 'typeorm';
+
+import AppointmentsRepository from '../repositories/AppointmentsRepository';
+import CreateAppointmentService from '../services/CreateAppointmentService';
+
+const appointmentsRouter = Router();
+
+appointmentsRouter.get('/', async (request, response) => {
+  const appointmentsRepository = getCustomRepository(AppointmentsRepository);
+  const appointments = await appointmentsRepository.find();
+
+  return response.json(appointments);
+});
+
+appointmentsRouter.post('/', async (request, response) => {
+  try {
+    const { provider_id, date } = request.body;
+
+    const parsedDate = parseISO(date);
+
+    const createAppointment = new CreateAppointmentService();
+
+    const appointment = await createAppointment.execute({
+      provider_id,
+      date: parsedDate,
+    });
+
+    return response.json(appointment);
+  } catch (err) {
+    return response.status(400).json({ error: err.message });
+  }
+});
+
+export default appointmentsRouter;
+```
+
+Adiciona no eslint para aceitar `provider_id` sem ser camel case:
+```json
+{
+
+  "rules": {
+
+    "@typescript-eslint/camelcase": "off",
+
+  }
+}
+```
+
+Faz um POST de um `appointment` agora com `provider_id` ao invés de `provider` no `body` da requisição da rota `'/appointments'`
+
 
 ### Criptografia de senha
