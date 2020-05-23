@@ -865,3 +865,107 @@ import { hash } from 'bcryptjs';
 Criar um user pelo Insomnia com email diferente e verificar se encriptou a senha antes de salvar no banco. Como não é bom trazer a senha no retorno do request, remover das rotas o password antes de trazer o retorno. Mas se ver no DBeaver, a senha estará lá.
 
 Para zerar a base de dados pelo DBeaver, selecione e delete as 3 linhas de users criado, e salva a tabela. E cria um user novo 'limpo'.
+
+## Autenticação de usuário
+JWT: JSON Web Token
+
+Nas rotas, criamos o `src/routes/sessions.routes.ts` no sentido de ser uma sessão criada pela autenticação de um usuário.
+```ts
+import { Router } from 'express';
+
+const sessionsRouter = Router();
+
+sessionsRouter.post('/', async (request, response) => {
+  try {
+    const { email, password } = request.body;
+
+    return response.json({ ok: true });
+  } catch (err) {
+    return response.status(400).json({ error: err.message });
+  }
+});
+
+export default sessionsRouter;
+```
+
+Adicionar em `src/routes/index.ts`
+```ts
+import sessionsRouter from './sessions.routes';
+// ...
+routes.use('/sessions', sessionsRouter);
+```
+
+Como vai ter que verificar se o e-mail existe e se a senha está correta, temos que criar também um service `src/services/AuthenticateUserService.ts`
+```ts
+import { getRepository } from 'typeorm';
+import { compare } from 'bcryptjs';
+
+import User from '../models/User';
+
+interface Request {
+  email: string;
+  password: string;
+}
+
+interface Response {
+  user: User;
+}
+
+export default class AuthenticateUserService {
+  public async execute({ email, password }: Request): Promise<Response> {
+    const usersRepository = getRepository(User);
+
+    const user = await usersRepository.findOne({ where: { email } });
+
+    if (!user) {
+      throw new Error('Incorrect email/password combination.');
+    }
+
+    const passwordMatched = await compare(password, user.password);
+
+    if (!passwordMatched) {
+      throw new Error('Incorrect email/password combination.');
+    }
+
+    delete user.password;
+
+    return { user };
+  }
+}
+```
+
+Alterar `src/routes/sessions.routes.ts`
+```ts
+import { Router } from 'express';
+
+import AuthenticateUserService from '../services/AuthenticateUserService';
+
+const sessionsRouter = Router();
+
+sessionsRouter.post('/', async (request, response) => {
+  try {
+    const { email, password } = request.body;
+
+    const authenticateUserService = new AuthenticateUserService();
+
+    const { user } = await authenticateUserService.execute({
+      email,
+      password,
+    });
+
+    return response.json({ user });
+  } catch (err) {
+    return response.status(400).json({ error: err.message });
+  }
+});
+
+export default sessionsRouter;
+```
+
+Fazer request de criar sessão no Insomnia, rota `'/sessions'` com body. Verificar com e-mail e senha errados se está retornando o erro
+```json
+{
+	"email": "cintiafumi@gmail.com",
+	"password": "123456"
+}
+```
