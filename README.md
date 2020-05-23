@@ -624,6 +624,25 @@ export default class AlterProviderFieldToProviderId1590196293971
 
 Mudar o type da coluna `id` das outras migrations, e por causa disso o `run` deu erro. Precisamos fazer o `revert` antes de rodar o `run` de novo.
 
+No DBeaver já é possívem ver em `ERDiagram` que tabela de usuários agrega a tabela de agendamentos.
+
+Existem 3 tipos de relacionamentos:
+- OneToOne: um usuário tem no máximo um agendamento
+- OneToMany: um usuário tem muitos agendamentos
+- ManyToMany: muitos usuários participam de muitos agendamentos (se mais de um prestador de serviço pudesse participar do mesmo serviço)
+
+No `src/models/Appointments.ts` fazer o relacionamento com user, sendo ManyToOne, pois são muitos agendamentos para um usuário. A arrow function retorna o model relacionado. E coloca o `JoinColumn` que vai identificar qual coluna vai identificar esse usuário.
+```ts
+  // ...
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'provider_id' })
+  provider: User;
+  // ...
+```
+
+KISS - Keep It Simple & Stupid
+
+
 ### Criação de registros
 
 ### Criptografia de senha
