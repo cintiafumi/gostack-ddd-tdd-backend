@@ -550,6 +550,79 @@ yarn typeorm migration:run
 ```
 
 ### Relacionamento nos models
+Ao invés de guardar o nome do prestador de serviços (provider), é melhor guardar a referência para o prestador de serviços. Nos bancos relacionais sempre colocamos o id da referência daquele usuário. Então, vamos trocar o `provider` por `provider_id` no model de Appointment
+```ts
+  @Column()
+  provider_id: string;
+```
+
+E iremos criar outra migration para fazer essa alteração
+```bash
+yarn typeorm migration:create -n AlterProviderFieldToProvideId
+```
+
+Como o `provider` pode um dia querer deletar sua conta, mas é importante manter o histórico os clientes, então mantemos o registro do `provider_id` e permitimos que seja `isNullable`. E precisamos também criar a `foreignKey`.
+
+`onDelete` pode ter 3 opções:
+- RESTRICT: não deixa o usuário ser deletado
+- SET NULL: vai setar a variável provider_id como `null``
+- CASCADE: deletou o usuário e todos agendamos relacionados a ele
+
+`onUpdate` caso um id seja alterado por qualquer razão, deixar como `CASCADE` para que se isso um dia acontecer, todas as tabelas relacionadas sejam alteradas também.
+
+No método `down`, temos que fazer a ordem contrária para conseguir reverter tudo o que fizemos no método `up`.
+```ts
+import {
+  MigrationInterface,
+  QueryRunner,
+  TableColumn,
+  TableForeignKey,
+} from 'typeorm';
+
+export default class AlterProviderFieldToProviderId1590196293971
+  implements MigrationInterface {
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.dropColumn('appointments', 'provider');
+
+    await queryRunner.addColumn(
+      'appointments',
+      new TableColumn({
+        name: 'provider_id',
+        type: 'uuid',
+        isNullable: true,
+      }),
+    );
+
+    await queryRunner.createForeignKey(
+      'appointments',
+      new TableForeignKey({
+        name: 'AppointmentProvider',
+        columnNames: ['provider_id'],
+        referencedColumnNames: ['id'],
+        referencedTableName: 'users',
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE',
+      }),
+    );
+  }
+
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.dropForeignKey('appointments', 'AppointmentProvider');
+
+    await queryRunner.dropColumn('appointments', 'provider_id');
+
+    await queryRunner.addColumn(
+      'appointments',
+      new TableColumn({
+        name: 'provider',
+        type: 'varchar',
+      }),
+    );
+  }
+}
+```
+
+Mudar o type da coluna `id` das outras migrations, e por causa disso o `run` deu erro. Precisamos fazer o `revert` antes de rodar o `run` de novo.
 
 ### Criação de registros
 
