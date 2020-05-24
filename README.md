@@ -927,8 +927,6 @@ export default class AuthenticateUserService {
       throw new Error('Incorrect email/password combination.');
     }
 
-    delete user.password;
-
     return { user };
   }
 }
@@ -953,6 +951,8 @@ sessionsRouter.post('/', async (request, response) => {
       password,
     });
 
+    delete user.password;
+
     return response.json({ user });
   } catch (err) {
     return response.status(400).json({ error: err.message });
@@ -969,3 +969,189 @@ Fazer request de criar sessão no Insomnia, rota `'/sessions'` com body. Verific
 	"password": "123456"
 }
 ```
+
+### Gerando Token JWT
+Instalar pacote
+```bash
+yarn add jsonwebtoken
+yarn add -D @types/jsonwebtoken
+```
+
+Adicionando o token em `src/services/AuthenticateUserService.ts`
+```ts
+import { sign } from 'jsonwebtoken';
+// ...
+
+interface Response {
+  user: User;
+  token: string;
+}
+
+export default class AuthenticateUserService {
+  public async execute({ email, password }: Request): Promise<Response> {
+    // ...
+    const token = sign({}, 'c038xxxxxxxx', {
+      subject: user.id,
+      expiresIn: '1d',
+    });
+    return { user, token };
+  }
+}
+```
+
+Na rota, também trazer na resposta o token
+```ts
+// ...
+    const { user, token } = await authenticateUserService.execute({
+      email,
+      password,
+    });
+
+    delete user.password;
+
+    return response.json({ user, token });
+// ...
+```
+
+Fazer uma requisição de criar session no Insomnia e verificar o retorno do jwt. Conferir em `jwt.io`
+
+### Middleware de autenticação
+Esse middleware vai evitar dos usuários acessarem algumas rotas sem autenticação.
+
+Inserir no Header da requisição o `Authorization` com `Bearer <token>`, que pode ser feito no Insomnia de maneira mais rápida na aba `Auth` e selecionar a opção `Bearer token`.
+
+Vamos criar uma variável de ambiente no Insomnia chamada `token` e adicionar então em `Auth` nas rotas de `'/appointments'` GET e POST.
+
+Criar o arquivo `src/middlewares/ensureAuthenticated.ts`
+
+Como já vai usar a `secret` para a verificação do token JWT, então, vamos passar essa secret para um arquivo `src/config/auth.ts``
+```ts
+export default {
+  jwt: {
+    secret: 'c038xxxxxxxx',
+    expiresIn: '1d',
+  },
+};
+```
+
+Alterar `src/services/AuthenticateUserService.ts`
+```ts
+import authConfig from '../config/auth';
+// ...
+    const { secret, expiresIn } = authConfig.jwt;
+
+    const token = sign({}, secret, {
+      subject: user.id,
+      expiresIn,
+    });
+// ...
+```
+
+Em `src/middlewares/ensureAuthenticated.ts`
+```ts
+import { NextFunction, Response, Request } from 'express';
+
+import { verify } from 'jsonwebtoken';
+import authConfig from '../config/auth';
+
+export default function ensureAuthenticated(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+): void {
+  const authHeader = request.headers.authorization;
+
+  if (!authHeader) {
+    throw new Error('JWT token is missing.');
+  }
+
+  const [, token] = authHeader.split(' ');
+
+  try {
+    const decoded = verify(token, authConfig.jwt.secret);
+
+    console.log(decoded);
+
+    next();
+  } catch {
+    throw new Error('Invalid JWT token.');
+  }
+}
+```
+
+Aplicar esse middleware na rota de `appointments`
+```ts
+// ...
+import ensureAuthenticated from '../middlewares/ensureAuthenticated';
+
+const appointmentsRouter = Router();
+
+appointmentsRouter.use(ensureAuthenticated);
+// ...
+```
+
+Testar no Insomnia o GET na rota de `appointments`:
+- sem token: `Error: JWT token is missing.`
+- com token errado: `Error: Invalid JWT token.`
+- com token certo: retorna todos appointments
+
+E no `console.log` também retornou.
+
+No `src/middlewares/ensureAuthenticated.ts` também seria legal incluir o id do `user` para que na listagem dos agendamentos, o usuários só tivesse acesso aos seus agendamentos. Então, todas informações no request e no response do middleware será carregado para frente.
+
+Forçar a tipagem do payload do token e sobrescrever o request e sua tipagem. Criar um arquivo `src/@types/express.d.ts` para sobrescrever a biblioteca do `express`. E ao inserir o interface do Request, isso será anexado ao tipo já existente.
+```ts
+declare namespace Express {
+  export interface Request {
+    user: {
+      id: string;
+    };
+  }
+}
+```
+
+Então, `src/middlewares/ensureAuthenticated.ts` conserta o tipo
+```ts
+import { NextFunction, Response, Request } from 'express';
+
+import { verify } from 'jsonwebtoken';
+import authConfig from '../config/auth';
+
+interface TokenPayload {
+  iat: number;
+  exp: number;
+  sub: string;
+}
+
+export default function ensureAuthenticated(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+): void {
+  const authHeader = request.headers.authorization;
+
+  if (!authHeader) {
+    throw new Error('JWT token is missing.');
+  }
+
+  const [, token] = authHeader.split(' ');
+
+  try {
+    const decoded = verify(token, authConfig.jwt.secret);
+
+    const { sub } = decoded as TokenPayload;
+
+    request.user = {
+      id: sub,
+    };
+
+    next();
+  } catch {
+    throw new Error('Invalid JWT token.');
+  }
+}
+```
+
+E agora temos o id do usuário disponível em todas as rotas autenticadas por esse middleware.
+
+### Upload de imagens
