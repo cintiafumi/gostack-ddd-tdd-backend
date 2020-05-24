@@ -1256,4 +1256,126 @@ usersRouter.patch(
 );
 ```
 
-Configurar o Insomnia para fazer um PATCH de uma foto na rota `/users/avatar`. Ao invés de `Body`, enviar `Multipart form` de `name` igual a `avatar` e tipo `file`. Escolher uma foto e fazer a requisição. Na pasta /tmp já apareceu a foto. Os dados desse arquivo são acessíveis pelo `request.file`.
+Configurar o Insomnia para fazer um PATCH de uma foto na rota `/users/avatar`. Ao invés de `Body`, enviar `Multipart form` de `name` igual a `avatar` e tipo `file`. Escolher uma foto e fazer a requisição. Na pasta /tmp já apareceu a foto. Os dados desse arquivo são acessíveis pelo `request.file` no arquivo de rotas `src/routes/users.routes.ts`.
+
+### Atualizando o avatar
+Criar um service de upload do avatar `src/services/UpdateUserAvatarService.ts` que tem que deletar o avatar antigo e salvar o avatar novo.
+```ts
+interface Request {
+  user_id: string;
+  avatarFilename: string;
+}
+
+class UpdateUserAvatarService {
+  public async execute({ user_id, avatarFilename }: Request): Promise<void> {}
+}
+
+export default UpdateUserAvatarService;
+```
+
+Na rota `src/routes/users.routes.ts`, importar o service e alterar
+```ts
+import UpdateUserAvatarService from '../services/UpdateUserAvatarService';
+// ...
+usersRouter.patch(
+  '/avatar',
+  ensureAuthenticated,
+  upload.single('avatar'),
+  async (request, response) => {
+    try {
+      const updateUserAvatarService = new UpdateUserAvatarService();
+      await updateUserAvatarService.execute({
+        user_id: request.user.id,
+        avatarFilename: request.file.filename,
+      });
+
+      return response.json({ ok: true });
+    } catch (err) {
+      return response.status(400).json({ error: err.message });
+    }
+  },
+);
+```
+
+Voltar para o Service e importar o `getRepository` com o model `User`. Nesse ponto, verificamos que esquecemos de adicionar o `avatar` no model do `User`
+```ts
+// ...
+  @Column()
+  avatar: string;
+// ...
+```
+
+Voltando ao service, primeiro temos que verificar se o user existe e se ele já tem um avatar. Como estamos salvando o arquivo localmente, então, temos que procurar se esse arquivo existe na pasta `/tmp` para então remover. Para não ter que escrever novamente a parte do path, vamos alterar o `src/config/upload.ts`
+```ts
+// ...
+const tmpFolder = path.resolve(__dirname, '..', '..', 'tmp');
+
+export default {
+  directory: tmpFolder,
+
+  storage: multer.diskStorage({
+    destination: tmpFolder,
+    // ...
+  }),
+};
+```
+
+Importar o uploadConfig para pegar a propriedade directory. Então, verificar o status desse file para ver se existe.
+```ts
+import { getRepository } from 'typeorm';
+import path from 'path';
+import fs from 'fs';
+
+import uploadConfig from '../config/upload';
+import User from '../models/User';
+
+interface Request {
+  user_id: string;
+  avatarFilename: string;
+}
+
+class UpdateUserAvatarService {
+  public async execute({ user_id, avatarFilename }: Request): Promise<User> {
+    const userRepository = getRepository(User);
+
+    const user = await userRepository.findOne(user_id);
+
+    if (!user) {
+      throw new Error('Only authenticated users can change avatar.');
+    }
+
+    if (user.avatar) {
+      const userAvatarFilePath = path.join(uploadConfig.directory, user.avatar);
+      const userAvatarExists = await fs.promises.stat(userAvatarFilePath);
+
+      if (userAvatarExists) {
+        await fs.promises.unlink(userAvatarFilePath);
+      }
+    }
+
+    user.avatar = avatarFilename;
+
+    await userRepository.save(user);
+
+    return user;
+  }
+}
+
+export default UpdateUserAvatarService;
+```
+
+Atualizar então a `response` de `src/routes/users.routes.ts`
+```ts
+// ...
+      const user = await updateUserAvatarService.execute({
+        user_id: request.user.id,
+        avatarFilename: request.file.filename,
+      });
+
+      delete user.password;
+
+      return response.json(user);
+// ...
+```
+
+Fazer o PATCH pelo Insomnia e verificar tanto na pasta /tmp e no banco se a imagem foi alterada.
