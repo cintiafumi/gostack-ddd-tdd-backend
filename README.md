@@ -1155,3 +1155,105 @@ export default function ensureAuthenticated(
 E agora temos o id do usuário disponível em todas as rotas autenticadas por esse middleware.
 
 ### Upload de imagens
+Adicionar uma coluna de `avatar` em `users` para armazenar o caminho da imagem. Criar a migration
+```bash
+yarn typeorm migration:create -n AddAvatarFieldToUsers
+```
+
+Nesse caso, a coluna pode ser nula caso já existam usuários cadastrados na base de dados.
+```ts
+import { MigrationInterface, QueryRunner, TableColumn } from 'typeorm';
+
+export default class AddAvatarFieldToUsers1590278682186
+  implements MigrationInterface {
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.addColumn(
+      'users',
+      new TableColumn({
+        name: 'avatar',
+        type: 'varchar',
+        isNullable: true,
+      }),
+    );
+  }
+
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.dropColumn('users', 'avatar');
+  }
+}
+```
+
+Criar a rota de PATCH que vai fazer alteração somente nesse campo. Em `src/routes/users.routes.ts`
+```ts
+// ...
+usersRouter.patch('/avatar', ensureAuthenticated, async (request, response) => {
+  return response.json({ ok: true });
+});
+// ,,,
+```
+
+Rodar a aplicação e criar no Insomnia essa request.
+
+Instalar o pacote que é um middleware que faz upload de arquivos do express
+```bash
+yarn add multer
+yarn add -D @types/multer
+```
+
+Criar um arquivo `src/config/upload.ts`. O `multer.diskStorage` é para salvar os arquivos localmente.
+
+Criar a pasta /tmp na raiz do projeto (fora da src). E um arquivo `.gitkeep` dentro que não quero que seja ignorada, garantindo que a pasta seja criada e suba vazia para o Github. No nosso `.gitignore` adicionar
+```
+.DS_Store
+.vscode/
+.idea/
+node_modules/
+build/
+temp/
+
+tmp/*
+!tmp/.gitkeep
+```
+
+Em `src/config/upload.ts`
+```ts
+import path from 'path';
+import crypto from 'crypto';
+import multer from 'multer';
+
+export default {
+  storage: multer.diskStorage({
+    destination: path.resolve(__dirname, '..', '..', 'tmp'),
+    filename(request, file, callback) {
+      const fileHash = crypto.randomBytes(10).toString('hex');
+      const filename = `${fileHash}-${file.originalname}`;
+
+      return callback(null, filename);
+    },
+  }),
+};
+```
+
+Em `src/routes/users.routes.ts`
+```ts
+import { Router } from 'express';
+import multer from 'multer';
+import uploadConfig from '../config/upload';
+
+import CreateUserService from '../services/CreateUserService';
+import ensureAuthenticated from '../middlewares/ensureAuthenticated';
+
+const usersRouter = Router();
+const upload = multer(uploadConfig);
+// ...
+usersRouter.patch(
+  '/avatar',
+  ensureAuthenticated,
+  upload.single('avatar'),
+  async (request, response) => {
+    return response.json({ ok: true });
+  },
+);
+```
+
+Configurar o Insomnia para fazer um PATCH de uma foto na rota `/users/avatar`. Ao invés de `Body`, enviar `Multipart form` de `name` igual a `avatar` e tipo `file`. Escolher uma foto e fazer a requisição. Na pasta /tmp já apareceu a foto. Os dados desse arquivo são acessíveis pelo `request.file`.
