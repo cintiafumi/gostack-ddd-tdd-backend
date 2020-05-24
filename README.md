@@ -1390,3 +1390,85 @@ app.use('/files', express.static(uploadConfig.directory));
 // ...
 ```
 Rodar a aplicação de novo e no browser já é possível ver esses arquivos pela rota `http://localhost:3333/files/<filename>`
+
+---
+## Exception Handling
+### Criando classe de erro
+Criar o arquivo `src/errors/AppError.ts`
+```ts
+class AppError {
+  public readonly message: string;
+
+  public readonly statusCode: number;
+
+  constructor(message: string, statusCode = 400) {
+    this.message = message;
+    this.statusCode = statusCode;
+  }
+}
+
+export default AppError;
+```
+
+Importar essa classe em todos os services e trocar onde estava `Error` por `new AppError(message, statusCode)`. E no middleware também
+```ts
+import AppError from '../errors/AppError';
+```
+E poderíamos já trocar no `response` do `try/catch` o status code como `err.statusCode`, mas como iremos tratar globalmente os erros, podemos deixar assim por enquanto.
+
+### Global Exception Handler
+É um middleware que vai capturar todos os erros de nossa aplicação independente da rota, do service, do middleware. Para isso, tirar todos os `try/catch` de todas as rotas. Vai no `server.ts` e coloca depois das rotas a tratativa dos erros
+```ts
+// ...
+app.use(routes);
+
+app.use(
+  (err: Error, request: Request, response: Response, next: NextFunction) => {
+    if (err instanceof AppError) {
+      return response.status(err.statusCode).json({
+        status: 'error',
+        message: err.message,
+      });
+    }
+
+    console.error(err);
+
+    return response.status(500).json({
+      status: 'error',
+      message: 'Internal server error.',
+    });
+  },
+);
+// ...
+```
+
+Porém, ao fazer um POST de Session com um user inválido no Insomnia, o `express` não conseguiu lidar direito com as funções assíncronas das rotas. Então, vamos instalar o pacote `express-async-errors` e importar logo após a importação do `express` no `server.ts`
+```bash
+yarn add express-async-errors
+```
+
+E no `server.ts`
+```ts
+// ...
+import express, { Request, Response, NextFunction } from 'express';
+import 'express-async-errors';
+// ...
+```
+Agora o Insomnia já traz o erro.
+
+O eslint reclama que o parâmetro `next` não está sendo usado, e para isso, vamos alterar o `server.ts`
+```ts
+// ...
+app.use((err: Error, request: Request, response: Response, _: NextFunction) => {
+// ...
+```
+E adicionar uma regra no `eslintrc.json`
+```json
+{
+  "rules": {
+    "@typescript-eslint/no-unused-vars": ["error", {
+      "argsIgnorePattern": "_"
+    }],
+  }
+}
+```
