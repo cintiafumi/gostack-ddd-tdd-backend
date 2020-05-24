@@ -1379,3 +1379,14 @@ Atualizar então a `response` de `src/routes/users.routes.ts`
 ```
 
 Fazer o PATCH pelo Insomnia e verificar tanto na pasta /tmp e no banco se a imagem foi alterada.
+
+### Servindo arquivos estáticos
+Configurar uma rota para visualização dos arquivos de avatar de maneira estática. E para isso, vamos em `src/server.ts` e adicionamos o `uploadConfig`
+```ts
+// ...
+import uploadConfig from './config/upload';
+// ...
+app.use('/files', express.static(uploadConfig.directory));
+// ...
+```
+Rodar a aplicação de novo e no browser já é possível ver esses arquivos pela rota `http://localhost:3333/files/<filename>`
