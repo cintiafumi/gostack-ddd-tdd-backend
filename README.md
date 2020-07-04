@@ -133,3 +133,35 @@ E adicionamos nos comandos
     "typeorm": "ts-node-dev -r tsconfig-paths/register ./node_modules/typeorm/cli.js"
   },
 ```
+
+## Liskov Substitution Principle
+Agora, ainda vemos dependência dos arquivos da camada de infra. Por exemplo, o `repository` de `appointments` é totalmente dependente de `typeorm`. Por isso, vamos mover `repositories/AppointmentsRepository.ts` para dentro de `appointments/infra/typeorm`. Mas precisamos criar uma pasta `repositories` fora de `typeorm` para quando trocarmos o `typeorm` por outra coisa, ainda tenhamos os mesmos métodos que terão os mesmos retornos e mesmos parâmetros, sem mexer em nada dos nossos `services`. Então, vamos criar uma `interface` chamada `IAppointmentsRepository.ts` com as regras de quais métodos vai ter.
+
+Vamos colocar no `eslintrc` para forçar que o nome de arquivo de interface inicie com a letra `I`.
+```json
+    "@typescript-eslint/interface-name-prefix": ["error", { "prefixWithI": "always" }],
+```
+
+Agora, em `src/modules/appointments/repositories/IAppointmentsRepository.ts`, vamos colocar o retorno do método `findByDate` como sendo `Promise<Appointment | undefined>` ao invés de `null`, para criarmos um padrão. Vamos exportar
+```ts
+import Appointment from '../infra/typeorm/entities/Appointment';
+
+export default interface IAppointmentsRepository {
+  findByDate(date: Date): Promise<Appointment | undefined>;
+}
+```
+
+E vamos importar essa `interface` dentro de `src/modules/appointments/infra/typeorm/repositories/AppointmentsRepository.ts`
+```ts
+import IAppointmentsRepository from '@modules/appointments/repositories/IAppointmentsRepository';
+
+import Appointment from '../entities/Appointment';
+
+@EntityRepository(Appointment)
+class AppointmentsRepository extends Repository<Appointment>
+  implements IAppointmentsRepository {
+//...
+```
+
+O Liskov Substitution Principle (L do SOLID), que essas camadas que são integrações com outras bibliotecas e banco de dados, devem ser substituíveis ao definirmos um conjunto de regras. E agora, nosso service depende somente de um repository. Então, vamos desconectar totalmente o service do nosso typeorm.
+
