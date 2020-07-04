@@ -95,3 +95,41 @@ src
         migrations
         index.ts
 ```
+
+## Configurando imports
+Arrumando os imports depois da movimentação dos arquivos.
+
+Antes disso, no `tsconfig.json` temos o `paths`
+```json
+    "baseUrl": "./src",
+    "paths": {
+      "@modules/*": ["modules/*"],
+      "@config/*": ["config/*"],
+      "@shared/*": ["shared/*"]
+    },
+```
+
+E dentro de `routes` temos arquivos específicos dos módulos, então vamos movê-los para dentro de seu módulo em `infra/http/routes`.
+
+Mover o `middleware` para dentro de `user`.
+
+Depois de arrumar todas as importações, temos que alterar o script de inicialização da aplicação
+```json
+  "scripts": {
+    "dev:server": "ts-node-dev --inspect --transpileOnly --ignore-watch node_modules src/shared/infra/http/server.ts",
+    "start": "ts-node src/shared/infra/http/server.ts",
+  },
+```
+
+E para a importação com `@` não quebrar, vamos importar a lib `ts-config/paths`
+```bash
+yarn add -D ts-config/paths
+```
+
+E adicionamos nos comandos
+```json
+  "scripts": {
+    "dev:server": "ts-node-dev -r tsconfig-paths/register --inspect --transpileOnly --ignore-watch node_modules src/shared/infra/http/server.ts",
+    "typeorm": "ts-node-dev -r tsconfig-paths/register ./node_modules/typeorm/cli.js"
+  },
+```
