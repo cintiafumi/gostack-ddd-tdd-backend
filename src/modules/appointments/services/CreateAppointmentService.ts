@@ -23,12 +23,10 @@ class CreateAppointmentService {
       throw new AppError('The appointment hour is not available.');
     }
 
-    const appointment = appointmentsRepository.create({
+    const appointment = await appointmentsRepository.create({
       provider_id,
       date: appointmentDate,
     });
-
-    await appointmentsRepository.save(appointment);
 
     return appointment;
   }

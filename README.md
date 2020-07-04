@@ -165,3 +165,88 @@ class AppointmentsRepository extends Repository<Appointment>
 
 O Liskov Substitution Principle (L do SOLID), que essas camadas que são integrações com outras bibliotecas e banco de dados, devem ser substituíveis ao definirmos um conjunto de regras. E agora, nosso service depende somente de um repository. Então, vamos desconectar totalmente o service do nosso typeorm.
 
+## Reescrevendo repositórios
+Para termos mais controle dos métodos do nosso repositório, vamos tirar os métodos que vieram pelo `extends Repository` do typeorm. E mesmo que fique mais verboso, vamos criar nossos métodos.
+
+Em `src/modules/appointments/infra/typeorm/repositories/AppointmentsRepository.ts` vamos somente importar o `getRepository` do typeorm
+
+Nossa variável `ormRepository` é um `Repository` do typeorm da nossa entidade `Appointment`.
+```ts
+class AppointmentsRepository implements IAppointmentsRepository {
+  private ormRepository: Repository<Appointment>;
+```
+No `constructor` criamos o repository.
+```ts
+  constructor() {
+    this.ormRepository = getRepository(Appointment);
+  }
+```
+Agora é só substituir no método e já está funcionando.
+```ts
+import { getRepository, Repository } from 'typeorm';
+
+import IAppointmentsRepository from '@modules/appointments/repositories/IAppointmentsRepository';
+
+import Appointment from '../entities/Appointment';
+
+class AppointmentsRepository implements IAppointmentsRepository {
+  private ormRepository: Repository<Appointment>;
+
+  constructor() {
+    this.ormRepository = getRepository(Appointment);
+  }
+
+  public async findByDate(date: Date): Promise<Appointment | undefined> {
+    const findAppointment = await this.ormRepository.findOne({
+      where: { date },
+    });
+
+    return findAppointment || undefined;
+  }
+}
+
+export default AppointmentsRepository;
+```
+
+Se formos no nosso `service`, vemos que estamos cheio de problemas. Mas antes vamos adicionar na nossa interface os métodos que estão faltando.
+
+Vamos adicionar o método `create` na nossa interface, e como agora temos controle total da sua criação, podemos definir melhor como funcionará esse método.
+Um conceito na arquitetura de software é o de DTOS (data transfer objects) que usaremos sempre que precisamos tipar uma informação composta, utilizada para criar, deletar, listar, ou seja, que vá se repetir na nossa aplicação. E vamos criar uma arquivo `ICreateApppointmentDTO` dentro de uma pasta `dtos` dentro de `modules/appointments`. Esse objeto vai definir o formato dos dados para criar um appointment.
+```ts
+export default interface ICreateAppointmentDTO {
+  provider_id: string;
+  date: Date;
+}
+```
+
+Vou usá-lo agora dentro de `src/modules/appointments/repositories/IAppointmentsRepository.ts`
+```ts
+export default interface IAppointmentsRepository {
+  create(data: ICreateAppointmentDTO): Promise<Appointment>;
+  findByDate(date: Date): Promise<Appointment | undefined>;
+}
+```
+
+E em `src/modules/appointments/infra/typeorm/repositories/AppointmentsRepository.ts` vamos adicionar o método `create`
+```ts
+  public async create({
+    provider_id,
+    date,
+  }: ICreateAppointmentDTO): Promise<Appointment> {
+    const appointment = this.ormRepository.create({ provider_id, date });
+
+    await this.ormRepository.save(appointment);
+
+    return appointment;
+  }
+```
+
+E no nosso service `src/modules/appointments/services/CreateAppointmentService.ts` podemos remover a parte do `save` e adicionamos um `await` na parte do `create`. O que acontece agora é que está faltando o nosso repositório nesse arquivo, pois ainda está muito acoplado ao typeorm.
+```ts
+    const appointment = await appointmentsRepository.create({
+      provider_id,
+      date: appointmentDate,
+    });
+```
+
+Ainda está cheio de erros, mas vamos consertando aos poucos.
