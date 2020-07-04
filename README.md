@@ -57,3 +57,41 @@ src
   shared
   server.ts
 ```
+
+## Camada de infra
+Separamos a camada de negócios da camada de infra. A camada de infra são as ferramentas que escolhemos para se relacionar com a camada de domínio. Então, na camada de infra ficará o banco de dados, o `express`.
+
+A camada de domínio sabe, por exemplo, que quando um usuário se cadastra, ele deve receber um email, mas não sabe qual ferramenta que envia. Essa camada deveria ser "lida" até por leigos e não deve ser responsável pelas ferramentas, somente pela regra de negócios, sobre como a nossa aplicação deve funcionar.
+
+Na pasta `shared` vamos colocar uma pasta `infra`, que ficará com todos arquivos específicos de alguma lib ou pacote. A pasta `database` faz parte de `infra` por usar `typeorm`, por isso, mudamos seu nome para `typeorm`. A pasta `middleware` também está associada a `infra` pois se refere ao uso do `express`, assim como `rotas` e `server.js`, mas iremos colocar todos eles dentro da pasta `http`. Dentro de cada `module`, também criamos uma camada de `infra/typeorm`.
+
+Agora, qual entidade está ligada ao `typeorm`? Totalmente. Então, vamos colocar as `entities` dentro de `typeorm`.
+
+Os nossos `services` isolam a regra de negócio da nossa aplicação.
+```
+src
+  modules
+    appointments
+      infra
+        typeorm
+          entities
+            Appointment.ts
+      repositories
+      services
+    users
+      infra
+        typeorm
+          entities
+            User.ts
+      services
+  shared
+    errors
+    infra
+      http
+        middlewares
+        routes
+        server.ts
+      typeorm
+        migrations
+        index.ts
+```
