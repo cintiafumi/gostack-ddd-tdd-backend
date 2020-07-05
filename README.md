@@ -503,3 +503,44 @@ E usamos `registerSingleton` para instanciar a classe apenas uma única vez dura
 Agora vamos fazer o mesmo para Users.
 
 Rodamos a aplicação e vemos se está funcionando.
+
+## Usando controllers
+Já que nossos Services ficam com a responsabilidade da regra de negócios, nossos Repositories ficam com a responsabilidade de salvar a persistências de dados, então sobra para nossos Controllers a responsabilidade do que está dentro das nossas rotas.
+
+Em `modules/appointments/infra/http/routes/appointments.routes.ts`
+```ts
+import AppointmentsController from '../controllers/AppointmentsController';
+//...
+const appointmentsController = new AppointmentsController();
+//...
+appointmentsRouter.post('/', appointmentsController.create);
+```
+E passamos tudo para `modules/appointments/infra/http/controllers/AppointmentsController.ts`
+```ts
+import { Request, Response } from 'express';
+import { parseISO } from 'date-fns';
+import { container } from 'tsyringe';
+
+import CreateAppointmentService from '@modules/appointments/services/CreateAppointmentService';
+
+export default class AppointmentsController {
+  public async create(request: Request, response: Response): Promise<Response> {
+    const { provider_id, date } = request.body;
+
+    const parsedDate = parseISO(date);
+
+    const createAppointment = container.resolve(CreateAppointmentService);
+
+    const appointment = await createAppointment.execute({
+      date: parsedDate,
+      provider_id,
+    });
+
+    return response.json(appointment);
+  }
+}
+```
+
+Faremos o mesmo para os controllers do módulo de users, mas precisaremos tanto de `SessionsController` quanto de `UsersController`. Lembrando que no REST, temos no máximo 5 métodos (index, show, create, update, delete). E como o `update` do avatar não poderia ocupar o espaço do método dentro de UsersController, então criamos também o `UserAvatarController`.
+
+Rodamos a aplicação para ver se está tudo funcionando.
