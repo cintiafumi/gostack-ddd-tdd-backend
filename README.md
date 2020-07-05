@@ -250,3 +250,80 @@ E no nosso service `src/modules/appointments/services/CreateAppointmentService.t
 ```
 
 Ainda está cheio de erros, mas vamos consertando aos poucos.
+
+## Dependency Inversion Principle
+A inversão de dependência é mais um conceito de SOLID. Ao invés do service depender do repository, as rotas que usam esse service que vai informar qual repository que é. Então vamos criar o método `contructor` dentro do nosso service que vai receber como parâmetro o `repository`
+```ts
+class CreateAppointmentService {
+  constructor(private appointmentsRepository: IAppointmentsRepository) {}
+```
+Que é a mesma coisa que
+```ts
+class CreateAppointmentService {
+  private appointmentsRepository: IAppointmentsRepository;
+  constructor(private appointmentsRepository: IAppointmentsRepository) {
+    this.appointmentsRepository = appointmentsRepository;
+  }
+```
+
+Em `eslintrc` vamos remover a regra que reclama dessa forma de criar a variável private dentro do constructor
+```json
+    "no-useless-constructor": "off",
+  ```
+
+Arrancamos fora o `getCustomRepository`, e toda vez que tivermos `appointmentsRepository`, trocamos por `this.appointmentsRepository`. E por último, nossa interface `Request` está reclamando por causa da nossa regra de sempre ter um `I` na frente do nome, então trocamos por `IRequest`.
+```ts
+import { startOfHour } from 'date-fns';
+
+import AppError from '@shared/errors/AppError';
+import Appointment from '../infra/typeorm/entities/Appointment';
+import IAppointmentsRepository from '../repositories/IAppointmentsRepository';
+
+interface IRequest {
+  provider_id: string;
+  date: Date;
+}
+
+class CreateAppointmentService {
+  constructor(private appointmentsRepository: IAppointmentsRepository) {}
+
+  public async execute({ date, provider_id }: IRequest): Promise<Appointment> {
+    const appointmentDate = startOfHour(date);
+
+    const findAppointmentInSameDate = await this.appointmentsRepository.findByDate(
+      appointmentDate,
+    );
+
+    if (findAppointmentInSameDate) {
+      throw new AppError('The appointment hour is not available.');
+    }
+
+    const appointment = await this.appointmentsRepository.create({
+      provider_id,
+      date: appointmentDate,
+    });
+
+    return appointment;
+  }
+}
+
+export default CreateAppointmentService;
+```
+
+Agora temos que arrumar nossa rota (camada de infra) `src/modules/appointments/infra/http/routes/appointments.routes.ts` para informar ao service (camada de domínio) qual o repository (camada de infra) que vai ser usado.
+```ts
+import AppointmentsRepository from '@modules/appointments/infra/typeorm/repositories/AppointmentsRepository';
+//...
+const appointmentsRepository = new AppointmentsRepository();
+//...
+  const createAppointment = new CreateAppointmentService(
+    appointmentsRepository,
+  );
+```
+E por enquanto, deixamos a rota get comentada.
+
+Não entraremos no caso, mas no nosso service, poderímos refatorar também a parte das entities para que nosso service seja totalmente independente do typorm. Então essa linha aqui seria alterada
+```ts
+import Appointment from '../infra/typeorm/entities/Appointment';
+```
+Mas não faremos isso agora.
