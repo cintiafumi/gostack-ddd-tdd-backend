@@ -544,3 +544,37 @@ export default class AppointmentsController {
 Faremos o mesmo para os controllers do módulo de users, mas precisaremos tanto de `SessionsController` quanto de `UsersController`. Lembrando que no REST, temos no máximo 5 métodos (index, show, create, update, delete). E como o `update` do avatar não poderia ocupar o espaço do método dentro de UsersController, então criamos também o `UserAvatarController`.
 
 Rodamos a aplicação para ver se está tudo funcionando.
+
+# Testes e TDD
+Testes automatizados vão garantir que a nossa aplicação continue funcionando independente do número de novas funcionalidades e do número de devs no time.
+
+Temos alguns tipos de testes de automação:
+
+1. Testes unitários
+
+Testam funcionalidades específicas da nossa aplicação e precisam ser funções puras (não dependem de outra parte da aplicação e não tem efeito colateral. Jamais fazendo chamada a API ou de serviços externos).
+
+2. Testes de integração
+
+Testam uma funcionalidade completa, passando por várias camadas da aplicação. Ex: criação de usuário novo
+```
+Route -> Controller -> Service -> Repository -> ...
+```
+
+3. Testes E2E
+
+Simulam a ação do usuário dentro da nossa aplicação.
+```
+1. Clique no input de email
+2. Preencha cintiafumi@gmail.com
+3. Clique no input de senha
+4. Preencha 123456
+5. Clique no botão "Logar"
+6. Espero que a página tenha enviado o usuário para o dashboard
+```
+
+## TDD (Test Driven Development)
+Criamos os testes antes mesmo de criarmos as funcionalidades da nossa aplicação. Os testes devem retornar o resultado que se espera daquela funcionalidade, garantindo que aquela funcionalidade se comporte de uma maneira. Ex:
+
+- Quando o usuário se cadastrar na aplicação, ele deve receber um e-mail de boas vindas;
+
