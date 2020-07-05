@@ -456,3 +456,50 @@ Rodamos a aplicação
 yarn dev:server
 ```
 
+## Injeção de dependências
+Para não termos que ficar criando o `constructor` toda vez, vamos instalar uma biblioteca de injeção de dependências.
+```bash
+yarn add tsyringe
+```
+Vamos criar a pasta `container` dentro de `shared` que será responsável pela injeção de dependências. Vamos importar tanto a interface quanto o repository.
+```ts
+import { container } from 'tsyringe';
+
+import IAppointmentsRepository from '@modules/appointments/repositories/IAppointmentsRepository';
+import AppointmentsRepository from '@modules/appointments/infra/typeorm/repositories/AppointmentsRepository';
+
+container.registerSingleton<IAppointmentsRepository>(
+  'AppointmentsRepository',
+  AppointmentsRepository,
+);
+```
+
+E para usar, vamos voltar para o service de appointments `modules/appointments/services/CreateAppointmentService.ts`
+```ts
+import { injectable, inject } from 'tsyringe';
+
+@injectable()
+class CreateAppointmentService {
+  constructor(
+    @inject('AppointmentsRepository')
+    private appointmentsRepository: IAppointmentsRepository,
+  ) {}
+//...
+```
+
+Mas para funcionar, precisamos ir no nosso `shared/infra/http/server.ts` para importar então esse `container`
+```ts
+import '@shared/container';
+```
+
+E nas rotas então, ao invés de criar um `new` repository, vamos avisar qual service o container deve resolver. Em `modules/appointments/infra/http/routes/appointments.routes.ts`
+```ts
+import { container } from 'tsyringe';
+//...
+  const createAppointment = container.resolve(CreateAppointmentService);
+```
+E usamos `registerSingleton` para instanciar a classe apenas uma única vez durante todo ciclo da aplicação.
+
+Agora vamos fazer o mesmo para Users.
+
+Rodamos a aplicação e vemos se está funcionando.
