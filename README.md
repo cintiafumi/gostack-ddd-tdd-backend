@@ -327,3 +327,132 @@ Não entraremos no caso, mas no nosso service, poderímos refatorar também a pa
 import Appointment from '../infra/typeorm/entities/Appointment';
 ```
 Mas não faremos isso agora.
+
+
+## Refatorando módulo de usuários
+Primeira coisa é criar a pasta `repositories` dentro de `modules/users` com nosso interface `IUsersRepository.ts`. Vamos observar os services para saber quais métodos usamos para esse módulo.
+- findById
+- findByEmail
+- create
+- save
+
+Alteramos todas interfaces `Request` para `IRequest` em todos services. Além disso, como não podemos depender diretamente do typeorm dentro do nosso service, vamos criar o `UsersRepository` dentro da camada de infra em `users/infra/typeorm/repositories`
+
+Como o método create vai receber mais informações, vou criar um `ICreateUserDTO.ts` dentro de `users/dtos`
+```ts
+export default interface ICreateUserDTO {
+  name: string;
+  email: string;
+  password: string;
+}
+```
+
+`src/modules/users/repositories/IUsersRepository.ts`
+```ts
+import User from '../infra/typeorm/entities/User';
+import ICreateUserDTO from '../dtos/ICreateUserDTO';
+
+export default interface IUsersRepository {
+  findById(id: string): Promise<User | undefined>;
+  findByEmail(email: string): Promise<User | undefined>;
+  create(data: ICreateUserDTO): Promise<User>;
+  save(user: User): Promise<User>;
+}
+```
+
+E dentro de `src/modules/users/infra/typeorm/repositories/UsersRepository.ts` vamos copiar tudo de Appointments e mudar para Users
+```ts
+import { getRepository, Repository } from 'typeorm';
+
+import IUsersRepository from '@modules/users/repositories/IUsersRepository';
+import ICreateUserDTO from '@modules/users/dtos/ICreateUserDTO';
+
+import User from '../entities/User';
+
+class UsersRepository implements IUsersRepository {
+  private ormRepository: Repository<User>;
+
+  constructor() {
+    this.ormRepository = getRepository(User);
+  }
+
+  public async findById(id: string): Promise<User | undefined> {
+    const user = await this.ormRepository.findOne(id);
+
+    return user || undefined;
+  }
+
+  public async findByEmail(email: string): Promise<User | undefined> {
+    const user = await this.ormRepository.findOne({
+      where: { email },
+    });
+
+    return user || undefined;
+  }
+
+  public async create(userData: ICreateUserDTO): Promise<User> {
+    const appointment = this.ormRepository.create(userData);
+
+    await this.ormRepository.save(appointment);
+
+    return appointment;
+  }
+
+  public async save(user: User): Promise<User> {
+    return this.ormRepository.save(user);
+  }
+}
+
+export default UsersRepository;
+```
+
+Agora em cada service, vamos colocar o constructor para receber o repository como parâmetro. E em todos métodos, mudamos para `this.usersRepository`, além de arrumar para os métodos que criamos. Ex:
+```ts
+class CreateUserService {
+  constructor(private usersRepository: IUsersRepository) {}
+
+  public async execute({ name, email, password }: IRequest): Promise<User> {
+    const checkUserExists = await this.usersRepository.findByEmail(email);
+    //...
+    const user = await this.usersRepository.create({
+```
+
+Nas rotas, `modules/users/infra/http/routes/users.routes.ts` e `modules/users/infra/http/routes/sessions.routes.ts` vamos instanciar `UsersRepository` e passar como parâmetro para os services.
+```ts
+import UsersRepository from '@modules/users/infra/typeorm/repositories/UsersRepository';
+//...
+const usersRepository = new UsersRepository();
+//...
+  const createUser = new CreateUserService(usersRepository);
+```
+
+E agora que mudamos todos os arquivos de lugar, temos que alterar o `ormconfig.json`
+```json
+{
+  "entities": [
+    "./src/modules/**/infra/typeorm/entities/*.ts"
+  ],
+  "migrations": [
+    "./src/shared/infra/typeorm/migrations/*.ts"
+  ],
+  "cli": {
+    "migrationsDir": "./src/shared/infra/typeorm/migrations"
+  }
+}
+```
+
+E ao rodar a aplicação, tivemos que mudar para dentro das rotas, pois o typeorm demora um pouco
+```ts
+const appointmentsRepository = new AppointmentsRepository();
+```
+e
+```ts
+const usersRepository = new UsersRepository();
+```
+foram para dentro da chamada das rotas por enquanto.
+
+Rodamos a aplicação
+```bash
+yarn dev:server
+```
+
