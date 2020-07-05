@@ -578,3 +578,56 @@ Criamos os testes antes mesmo de criarmos as funcionalidades da nossa aplicaçã
 
 - Quando o usuário se cadastrar na aplicação, ele deve receber um e-mail de boas vindas;
 
+## Configurando Jest
+Adicionar a dependência de desenvolvimento
+```bash
+yarn add -D jest
+
+yarn jest --init
+
+✔ Would you like to use Jest when running "test" script in "package.json"? … yes
+✔ Choose the test environment that will be used for testing › node
+✔ Do you want Jest to add coverage reports? … no
+✔ Which provider should be used to instrument code for coverage? › v8
+✔ Automatically clear mock calls and instances between every test? … yes
+```
+(Não tenho certeza quanto ao `v8`)
+
+E foi criado um arquivo `jest.config.js`
+
+Adicionamos a biblioteca para o jest entender arquivos de teste em typescript
+```bash
+yarn add -D ts-jest
+```
+
+Em `jest.config.js` que precisamos setar o `preset` e também de `testMatch`
+```ts
+  preset: 'ts-jest',
+  //...
+  testMatch: [
+    "**/*.spec.ts"
+  ],
+```
+
+Para testar, vamos criar um arquivo `src/modules/appointments/services/CreateAppointmentService.spec.ts` e digitar `test()`, mas como não reconheceu, precisamos instalar o pacote dos types
+```bash
+yarn add -D @types/jest
+```
+Além disso, também devemos adicionar no `eslintrc` as variáveis globais do `jest`
+```json
+  "env": {
+    "es6": true,
+    "node": true,
+    "jest": true
+  },
+```
+E criamos um teste bem simples somente para testar
+```ts
+test('sum two numbers', () => {
+  expect(1 + 2).toBe(3);
+});
+```
+E testamos
+```bash
+yarn test
+```
