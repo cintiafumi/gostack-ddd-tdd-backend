@@ -631,3 +631,23 @@ E testamos
 ```bash
 yarn test
 ```
+
+## Pensando nos testes
+Vamos começar a fazer os testes das funcionalidades já existentes da nossa aplicação. Vamos começar pelos nossos services. E vamos ter no mínimo 1 teste para cada service. E pode ser que cada funcionalidade tenha inúmeros testes.
+
+Começamos importando nosso service. E vamos categorizar os testes pelo `describe()`. Existem 2 formas de criar os testes. Uma é com `test()` e outra como `it()`, que deixa mais fácil a compreensão do que está sendo testado.
+
+Em `modules/appointments/services/CreateAppointmentService.spec.ts`
+```ts
+import CreateAppointmentService from './CreateAppointmentService';
+
+describe('CreateAppointment', () => {
+  it('should be able to create a new appointment', () => {
+    expect(1 + 2).toBe(3);
+  });
+});
+```
+
+Para criarmos um appointment, precisamos passar um `provider_id` e uma `date`. E como iremos escolher o `provider_id`? Nós iremos usar um user do nosso banco de dados? Então, preciso de um banco de dados só para o teste? Nosso CI também vai fazer os testes, então precisaria de outro banco de dados só para os testes de CI?
+
+Quando dependemos de banco de dados, de envio de e-mails, ou seja, de quaisquer serviços externos, fica difícil fazer esses testes. E para um teste unitário, ele não deve depender de nada externo. Então, vamos criar um `fake repository` para não tocarmos no banco de dados e que não tem funcionalidade nenhuma.
