@@ -867,3 +867,170 @@ describe('CreateUser', () => {
   });
 });
 ```
+
+## Testando autenticação
+Como todos os testes são independentes, para autenticar um usuário, primeiro eu precisarei criá-lo. Então, vamos ter que importar o `CreateUserService` para esse teste.
+```ts
+import FakeUsersRepository from '../repositories/fake/FakeUsersRepository';
+import AuthenticateUserService from './AuthenticateUserService';
+import CreateUserService from './CreateUserService';
+
+describe('AuthenticateUser', () => {
+  it('should be able to authenticate', async () => {
+    const fakeUsersRepository = new FakeUsersRepository();
+
+    const createUser = new CreateUserService(fakeUsersRepository);
+    const authenticateUser = new AuthenticateUserService(fakeUsersRepository);
+
+    const user = await createUser.execute({
+      name: 'John Doe',
+      email: 'johndoei@example.com',
+      password: '123456',
+    });
+
+    const response = await authenticateUser.execute({
+      email: 'johndoei@example.com',
+      password: '123456',
+    });
+
+    expect(response).toHaveProperty('token');
+    expect(response.user).toEqual(user);
+  });
+});
+```
+Como nosso service de criação de usuário fere um dos princípios do SOLID, o de *S - Single Responsability Principle*, devido também se responsabilizar pela criação do hash da senha, então, vamos isolar a criação de senhas em outro arquivo. Usaremos a inversão de dependências, *D - Dependency inversion principle*, e a injeção de dependências como fizemos nos repositories. Mas como é uma função somente usada pelos users, não iremos colocar dentro da nossa pasta `shared/container`.
+
+Criamos uma pasta `providers` dentro do módulo de `user`
+```
+src
+  modules
+    users
+      providers
+        HashProvider
+          fakes
+          implementation
+          models
+            IHashProvider
+```
+
+Na pasta `models`, vamos colocar `src/modules/users/providers/HashProvider/models/IHashProvider.ts` contendo os métodos que o HashProvider vai ter, assim, podemos futuramente alterar a biblioteca que usamos para criar o hash e também criar outros métodos (ex: update de senha) sem que tenhamos que alterar outros arquivos.
+```ts
+export default interface IHashProvider {
+  generateHash(payload: string): Promise<string>;
+  compareHash(payload: string, hashed: string): Promise<boolean>;
+}
+```
+
+Na pasta `implementations`, vamos colocar a biblioteca que iremos usar por enquanto nossa `BCryptHashProvider.ts`
+```ts
+import { hash, compare } from 'bcryptjs';
+import IHashProvider from '../models/IHashProvider';
+
+export default class BCryptHashProvider implements IHashProvider {
+  public async generateHash(payload: string): Promise<string> {
+    return hash(payload, 8);
+  }
+
+  public async compareHash(payload: string, hashed: string): Promise<boolean> {
+    return compare(payload, hashed);
+  }
+}
+```
+
+Agora no nosso service `CreateUserService`, vamos importar nosso `IHashProvider`. Lembrando que não importamos a `class` de implementation diretamente, sempre importamos a interface.
+```ts
+@injectable()
+class CreateUserService {
+  constructor(
+    @inject('UsersRepository')
+    private usersRepository: IUsersRepository,
+
+    private hashProvider: IHashProvider,
+  ) {}
+  //...
+    const hashedPassword = await this.hashProvider.generateHash(password);
+```
+
+E agora, temos que criar nossa injeção de dependência. Na pasta dos nossos `providers`, vamos criar um `index.ts` que fará isso. Importamos nosso HashProvider e a inteface.
+```ts
+import { container } from 'tsyringe';
+
+import IHashProvider from './HashProvider/models/IHashProvider';
+import BCryptHashProvider from './HashProvider/implementation/BCryptHashProvider';
+
+container.registerSingleton<IHashProvider>('HashProvider', BCryptHashProvider);
+```
+
+Colocamos o `inject()` lá no nosso service
+```ts
+@injectable()
+class CreateUserService {
+  constructor(
+//...
+    @inject('HashProvider')
+    private hashProvider: IHashProvider,
+  ) {}
+```
+
+E, por fim, adicionamos no nosso `container`
+```ts
+import '@modules/users/providers';
+```
+
+Como criamos nosso provider, precisamos agora criar também seu fake provider `modules/users/providers/HashProvider/fakes/FakeHashProvider.ts`
+```ts
+import IHashProvider from '../models/IHashProvider';
+
+export default class FakeHashProvider implements IHashProvider {
+  public async generateHash(payload: string): Promise<string> {
+    return payload;
+  }
+
+  public async compareHash(payload: string, hashed: string): Promise<boolean> {
+    return payload === hashed;
+  }
+}
+```
+
+E no nosso teste de autenticação, agora posso importar o `FakeHashProvider`, assim como, no service de autenticação e também no teste de criação de usuário
+```ts
+describe('AuthenticateUser', () => {
+  it('should be able to authenticate', async () => {
+    const fakeUsersRepository = new FakeUsersRepository();
+    const fakeHashProvider = new FakeHashProvider();
+
+    const createUser = new CreateUserService(
+      fakeUsersRepository,
+      fakeHashProvider,
+    );
+    const authenticateUser = new AuthenticateUserService(
+      fakeUsersRepository,
+      fakeHashProvider,
+    );
+```
+
+```ts
+@injectable()
+export default class AuthenticateUserService {
+  constructor(
+    //...
+    @inject('HashProvider')
+    private hashProvider: IHashProvider,
+  ) {}
+  //...
+      const passwordMatched = await this.hashProvider.compareHash(
+      password,
+      user.password,
+    );
+```
+
+```ts
+describe('CreateUser', () => {
+  it('should be able to create a new user', async () => {
+    const fakeUsersRepository = new FakeUsersRepository();
+    const fakeHashProvider = new FakeHashProvider();
+    const createUser = new CreateUserService(
+      fakeUsersRepository,
+      fakeHashProvider,
+    );
+```
