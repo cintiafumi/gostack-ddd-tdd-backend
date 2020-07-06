@@ -743,3 +743,39 @@ E rodamos no terminal novamente
 yarn test
 ```
 E conseguimos abrir no navegador o arquivo `coverage/lcov-report/index.html`, que mostra um relatório dos arquivos cobertos por testes.
+
+## Testes de agendamento
+Vamos criar o teste que entra no `if` de não poder criar 2 agendamentos na mesma data. Adicionamos mais um teste no `CreateAppointmentService.spec.ts`
+```ts
+import AppError from '@shared/errors/AppError';
+//...
+  it('should not be able to create two appointments at the same time', async () => {
+    const fakeAppointmentsRepository = new FakeAppointmentsRepository();
+    const createAppointment = new CreateAppointmentService(
+      fakeAppointmentsRepository,
+    );
+
+    const appointmentDate = new Date(2020, 6, 5, 11);
+
+    await createAppointment.execute({
+      date: appointmentDate,
+      provider_id: '123123123',
+    });
+
+    expect(
+      createAppointment.execute({
+        date: appointmentDate,
+        provider_id: '123123123',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+```
+Mas como pegamos um erro de verificação da data, alteramos também nosso `FakeAppointmentsRepository`
+```ts
+import { isEqual } from 'date-fns';
+//...
+    const findAppointment = this.appointments.find(appointment =>
+      isEqual(appointment.date, date),
+    );
+```
+Rodamos o teste e agora o coverage nesse service está 100% coberto de testes.
