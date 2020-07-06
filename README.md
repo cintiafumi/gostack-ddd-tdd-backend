@@ -651,3 +651,73 @@ describe('CreateAppointment', () => {
 Para criarmos um appointment, precisamos passar um `provider_id` e uma `date`. E como iremos escolher o `provider_id`? Nós iremos usar um user do nosso banco de dados? Então, preciso de um banco de dados só para o teste? Nosso CI também vai fazer os testes, então precisaria de outro banco de dados só para os testes de CI?
 
 Quando dependemos de banco de dados, de envio de e-mails, ou seja, de quaisquer serviços externos, fica difícil fazer esses testes. E para um teste unitário, ele não deve depender de nada externo. Então, vamos criar um `fake repository` para não tocarmos no banco de dados e que não tem funcionalidade nenhuma.
+
+## Criando o primeiro teste
+Vamos criar então os `fake repositories`. Em `modules/appointments/repositories/fake/FakeAppointmentsRepository.ts`, vamos copiar tudo do `AppointmentsRepository.ts` e vamos remover todas as importações que dependem do typeorm e iremos usar puramenente JS para esses métodos. Na criação de um appointment então, iremos instanciar `Appointment` e vamos também criar um array de appointments. E para adicionar as informações dentro de appointment, podemos usar o `Object.assign`. E no método `findByDate` também fazemos o find em cima do array criado.
+```ts
+import { uuid } from 'uuidv4';
+import IAppointmentsRepository from '@modules/appointments/repositories/IAppointmentsRepository';
+import ICreateAppointmentDTO from '@modules/appointments/dtos/ICreateAppointmentDTO';
+
+import Appointment from '../../infra/typeorm/entities/Appointment';
+
+class AppointmentsRepository implements IAppointmentsRepository {
+  private appointments: Appointment[] = [];
+
+  public async findByDate(date: Date): Promise<Appointment | undefined> {
+    const findAppointment = this.appointments.find(
+      appointment => appointment.date === date,
+    );
+    return findAppointment;
+  }
+
+  public async create({
+    provider_id,
+    date,
+  }: ICreateAppointmentDTO): Promise<Appointment> {
+    const appointment = new Appointment();
+    Object.assign(appointment, { id: uuid(), date, provider_id });
+    this.appointments.push(appointment);
+    return appointment;
+  }
+}
+
+export default AppointmentsRepository;
+```
+
+Lá nos testes, vamos importar esse fakeAppointmentsRepository
+```ts
+import FakeAppointmentsRepository from '../repositories/fake/FakeAppointmentsRepository';
+import CreateAppointmentService from './CreateAppointmentService';
+
+describe('CreateAppointment', () => {
+  it('should be able to create a new appointment', async () => {
+    const fakeAppointmentsRepository = new FakeAppointmentsRepository();
+    const createAppointment = new CreateAppointmentService(
+      fakeAppointmentsRepository,
+    );
+
+    const appointment = await createAppointment.execute({
+      date: new Date(),
+      provider_id: '123123123',
+    });
+
+    expect(appointment).toHaveProperty('id');
+    expect(appointment.provider_id).toBe('123123123');
+  });
+});
+```
+
+E quando rodamos o teste, deu alguns erros. Esquecemos de alterar o `jest.config.js` para a importação que fazemos com `@`
+```js
+const { pathsToModuleNameMapper } = require('ts-jest');
+const { compilerOptions } = require('./tsconfig.json');
+
+module.exports = {
+//...
+  moduleNameMapper: pathsToModuleNameMapper(compilerOptions.paths, { prefix: '<rootDir>/src/' }),
+//...
+}
+```
+
+E em `tsconfig.json`, vamos remover todas as linhas de comentários, pois o jest não aceita.
