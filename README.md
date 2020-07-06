@@ -721,3 +721,25 @@ module.exports = {
 ```
 
 E em `tsconfig.json`, vamos remover todas as linhas de comentários, pois o jest não aceita.
+
+## Coverage report
+Ferramenta que vai dizer a quantidade de código que está coberta com teste. No `jest.config.js`
+```js
+module.exports {
+  collectCoverage: true,
+  collectCoverageFrom: [
+    '<rootDir>/src/modules/**/services/*.ts'
+  ],
+  coverageDirectory: 'coverage',
+  coverageProvider: "v8",
+  coverageReporters: [
+    "text-summary",
+    "lcov",
+  ],
+}
+```
+E rodamos no terminal novamente
+```bash
+yarn test
+```
+E conseguimos abrir no navegador o arquivo `coverage/lcov-report/index.html`, que mostra um relatório dos arquivos cobertos por testes.
