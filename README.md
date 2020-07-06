@@ -779,3 +779,91 @@ import { isEqual } from 'date-fns';
     );
 ```
 Rodamos o teste e agora o coverage nesse service está 100% coberto de testes.
+
+## Testando criação de usuário
+Vamos criar o `modules/users/repositories/fake/FakeUsersRepository.ts`
+```ts
+import IUsersRepository from '@modules/users/repositories/IUsersRepository';
+import ICreateUserDTO from '@modules/users/dtos/ICreateUserDTO';
+
+import { uuid } from 'uuidv4';
+import User from '../../infra/typeorm/entities/User';
+
+class UsersRepository implements IUsersRepository {
+  private users: User[] = [];
+
+  public async findById(id: string): Promise<User | undefined> {
+    const findUser = this.users.find(user => user.id === id);
+    return findUser;
+  }
+
+  public async findByEmail(email: string): Promise<User | undefined> {
+    const findUser = this.users.find(user => user.email === email);
+    return findUser;
+  }
+
+  public async create(userData: ICreateUserDTO): Promise<User> {
+    const user = new User();
+
+    Object.assign(user, { id: uuid() }, userData);
+
+    this.users.push(user);
+
+    return user;
+  }
+
+  public async save(user: User): Promise<User> {
+    const findIndex = this.users.findIndex(findUser => findUser.id === user.id);
+
+    this.users[findIndex] = user;
+
+    return user;
+  }
+}
+
+export default UsersRepository;
+```
+
+Agora podemos criar nossos testes de criação de usuário
+```ts
+import AppError from '@shared/errors/AppError';
+
+import FakeUsersRepository from '../repositories/fake/FakeUsersRepository';
+import CreateUserService from './CreateUserService';
+
+describe('CreateUser', () => {
+  it('should be able to create a new user', async () => {
+    const fakeUsersRepository = new FakeUsersRepository();
+    const createUser = new CreateUserService(fakeUsersRepository);
+
+    const user = await createUser.execute({
+      name: 'John Doe',
+      email: 'johndoei@example.com',
+      password: '123456',
+    });
+
+    expect(user).toHaveProperty('id');
+    expect(user.name).toBe('John Doe');
+    expect(user.email).toBe('johndoei@example.com');
+  });
+
+  it('should not be able to create a new user with an existence e-mail', async () => {
+    const fakeUsersRepository = new FakeUsersRepository();
+    const createUser = new CreateUserService(fakeUsersRepository);
+
+    await createUser.execute({
+      name: 'John Doe',
+      email: 'johndoei@example.com',
+      password: '123456',
+    });
+
+    expect(
+      createUser.execute({
+        name: 'John Doe',
+        email: 'johndoei@example.com',
+        password: '123456',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+});
+```
