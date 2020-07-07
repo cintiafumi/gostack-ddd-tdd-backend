@@ -1355,3 +1355,138 @@ Mapeamento de requisitos e regra de negócios baseado no layout da aplicação.
     - O usuário não pode agendar num horário já ocupado
     - O usuário não pode agendar num horário que já passou
     - O usuário não pode agendar serviços consigo mesmo
+
+# Perfil do usuário
+
+## Aplicando TDD na prática
+Primeiro vamos pelos Requisitos Funcionais de Recuperação de senha
+
+> - O usuário deve poder recuperar sua senha informando o seu e-mail
+
+Quando mapeamos uma nova funcionalidade, vamos criar o nosso service que será o mais simples possível `SendForgotPasswordEmailService`
+```ts
+import { injectable, inject } from 'tsyringe';
+import IUsersRepository from '../repositories/IUsersRepository';
+
+interface IRequest {
+  email: string;
+}
+
+@injectable()
+class SendForgotPasswordEmailService {
+  constructor(
+    @inject('UsersRepository')
+    private usersRepository: IUsersRepository,
+  ) {}
+  public async execute(): Promise<void> {}
+}
+
+export default SendForgotPasswordEmailService;
+```
+
+E já vamos para o teste. Mas como ainda não temos nem a estrutura mínima para o envio de email, então, precisamos criar o provider desse serviço. Vamos criar as pastas
+```
+  src
+    shared
+      container
+        providers
+          MailProvider
+            fakes
+              FakeMailProvider.ts
+            implementations
+            models
+              IMailProvider.ts
+```
+
+models
+```ts
+export default interface IMailProvider {
+  sendMail(to: string, body: string): Promise<void>;
+}
+```
+
+fakes
+```ts
+import IMailProvider from '../models/IMailProvider';
+
+interface IMessage {
+  to: string;
+  body: string;
+}
+
+export default class FakeMailProvider implements IMailProvider {
+  private messages: IMessage[] = [];
+
+  public async sendMail(to: string, body: string): Promise<void> {
+    this.messages.push({
+      to,
+      body,
+    });
+  }
+}
+```
+
+E fazendo o teste, vemos que já falhou. Para isso, agora vamos fazer nossa aplicação realmente enviar o email para então voltar para o teste
+```ts
+import FakeMailProvider from '@shared/container/providers/MailProvider/fakes/FakeMailProvider';
+import FakeUsersRepository from '../repositories/fake/FakeUsersRepository';
+import SendForgotPasswordEmailService from './SendForgotPasswordEmailService';
+
+describe('UpdateUserAvatar', () => {
+  it('should be able to recover the password by informing the e-mail address', async () => {
+    const fakeUsersRepository = new FakeUsersRepository();
+    const fakeMailProvider = new FakeMailProvider();
+
+    const sendMail = jest.spyOn(fakeMailProvider, 'sendMail');
+
+    const sendForgotPasswordEmail = new SendForgotPasswordEmailService(
+      fakeUsersRepository,
+    );
+
+    const user = await fakeUsersRepository.create({
+      name: 'John Doe',
+      email: 'johndoei@example.com',
+      password: '123456',
+    });
+
+    await sendForgotPasswordEmail.execute({
+      email: 'johndoei@example.com',
+    });
+
+    expect(sendMail).toHaveBeenCalled();
+  });
+});
+```
+O objetivo do teste é: `RED` --> `GREEN` --> `REFACTOR`. Estamos em `RED`
+
+Voltamos para o service, importamos o IMailProvider e criamos a injeção de dependência no arquivo
+```ts
+@injectable()
+class SendForgotPasswordEmailService {
+  constructor(
+    @inject('UsersRepository')
+    private usersRepository: IUsersRepository,
+
+    @inject('MailProvider')
+    private mailProvider: IMailProvider,
+  ) {}
+
+  public async execute({ email }: IRequest): Promise<void> {
+    this.mailProvider.sendMail(
+      email,
+      'Pedido de recuperação de senha recebido.',
+    );
+  }
+}
+```
+E adicionamos no teste
+```ts
+    const sendForgotPasswordEmail = new SendForgotPasswordEmailService(
+      fakeUsersRepository,
+      fakeMailProvider,
+    );
+```
+Rodamos o teste e ele passou. Estamos em `GREEN`, onde o teste é o mais tosco possível.
+```bash
+yarn test src/modules/users/services/SendForgotPasswordEmailService.spec.ts
+```
