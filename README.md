@@ -1086,3 +1086,127 @@ E quando o usuário tenta logar com senha errada
   });
 ```
 
+## Provider de storage
+Para testar a parte de salvar o Avatar, chegamos num impasse, pois estamos salvando na pasta `tmp` (no nosso disco). Mas isso funciona muito bem somente na nossa máquina local. Ao colocar nossa aplicação na nuvem, precisaríamos armazenar as imagens em servidores específicos (CDN - Content Delivery Network) como Amazon S3, Google Cloud Storage, Digital Ocean Spaces...
+
+Para resolver isso, precisamos tirar a responsabilidade de armazenamento da imagem de dentro do nosso Service. Então, precisamos de uma camada desse provider que vai dizer como vamos salvar e deletar um arquivo. Como poderemos mais para frente armazenar outros tipos de arquivos, vamos criar esse arquivo dentro da pasta mais global `shared/container/providers/StorageProvider/`.
+```
+  src
+    shared
+      container
+        providers
+          StorageProvider
+            fakes
+            implementations
+            models
+            index.ts
+```
+
+Vamos começando a criar nosso model `IStorageProvider.ts` que só vai ter dois métodos o de salvar e o de deletar
+```ts
+export default interface IStorageProvider {
+  saveFile(file: string): Promise<string>;
+  deleteFile(file: string): Promise<void>;
+}
+```
+
+Agora vamos criar em implementations nosso `DiskStorageProvider.ts` que é onde vamos salvar na nossa máquina. Mais para frente, podemos ter o AmazonS3Provider, GoogleCloudStorageProvider. Como o multer salva o arquivo dentro da nossa pasta `tmp`, vamos alterar um pouco a lógica para que essa pasta seja realmente temporária e que o upload seja considerado concluído quando for para a pasta `tmp/uploads`
+
+Antes, fazemos a alteração de `@config/upload.ts` adicinando mais um folder
+```ts
+export default {
+  tmpFolder,
+  uploadFolder: path.resolve(tmpFolder, 'uploads'),
+  //...
+```
+
+```ts
+import fs from 'fs';
+import path from 'path';
+import uploadConfig from '@config/upload';
+import IStorageProvider from '../models/IStorageProvider';
+
+class DiskStorageProvider implements IStorageProvider {
+  public async saveFile(file: string): Promise<string> {
+    await fs.promises.rename(
+      path.resolve(uploadConfig.tmpFolder, file),
+      path.resolve(uploadConfig.uploadFolder, file),
+    );
+    return file;
+  }
+
+  public async deleteFile(file: string): Promise<void> {
+    const filePath = path.resolve(uploadConfig.uploadFolder, file);
+
+    try {
+      fs.promises.stat(filePath);
+    } catch {
+      return;
+    }
+    await fs.promises.unlink(filePath);
+  }
+}
+
+export default DiskStorageProvider;
+```
+
+Em `@shared/container/providers/index.js` vamos importar tanto o provider quanto a interface para fazermos a injeção de dependência.
+```ts
+import { container } from 'tsyringe';
+
+import IStorageProvider from './StorageProvider/models/IStorageProvider';
+import DiskStorageProvider from './StorageProvider/implementations/DiskStorageProvider';
+
+container.registerSingleton<IStorageProvider>(
+  'StorageProvider',
+  DiskStorageProvider,
+);
+```
+
+Fazemos a importação simples em `@shared/container/index.ts`
+```ts
+import './providers';
+```
+
+Agora vamos colocar `inject` no service de updload de avatar
+```ts
+@injectable()
+class UpdateUserAvatarService {
+  constructor(
+//...
+    @inject('StorageProvider')
+    private storageProvider: IStorageProvider,
+  ) {}
+  //...
+    if (user.avatar) {
+      await this.storageProvider.deleteFile(user.avatar);
+    }
+
+    const filename = await this.storageProvider.saveFile(avatarFilename);
+
+    user.avatar = filename;
+```
+
+E para testarmos, precisamos criar nosso `FakeStorageProvider` similar ao `DiskStorageProvider`
+```ts
+import IStorageProvider from '../models/IStorageProvider';
+
+class FakeStorageProvider implements IStorageProvider {
+  private storage: string[] = [];
+
+  public async saveFile(file: string): Promise<string> {
+    this.storage.push(file);
+    return file;
+  }
+
+  public async deleteFile(file: string): Promise<void> {
+    const findIndex = this.storage.findIndex(
+      storageFile => storageFile === file,
+    );
+
+    this.storage.splice(findIndex, 1);
+  }
+}
+
+export default FakeStorageProvider;
+```
