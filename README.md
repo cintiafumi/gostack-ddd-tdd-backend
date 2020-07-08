@@ -762,7 +762,7 @@ import AppError from '@shared/errors/AppError';
       provider_id: '123123123',
     });
 
-    expect(
+    await expect(
       createAppointment.execute({
         date: appointmentDate,
         provider_id: '123123123',
@@ -857,7 +857,7 @@ describe('CreateUser', () => {
       password: '123456',
     });
 
-    expect(
+    await expect(
       createUser.execute({
         name: 'John Doe',
         email: 'johndoei@example.com',
@@ -1047,7 +1047,7 @@ Faltaram os testes quando usuário tenta autenticar com usuário inexistente
       fakeHashProvider,
     );
 
-    expect(
+    await expect(
       authenticateUser.execute({
         email: 'johndoei@example.com',
         password: '123456',
@@ -1077,7 +1077,7 @@ E quando o usuário tenta logar com senha errada
       password: '123456',
     });
 
-    expect(
+    await expect(
       authenticateUser.execute({
         email: 'johndoei@example.com',
         password: 'wrong-password',
@@ -1253,7 +1253,7 @@ describe('UpdateUserAvatar', () => {
       fakeStorageProvider,
     );
 
-    expect(
+    await expect(
       updateUserAvatar.execute({
         user_id: 'non-exisiting-user',
         avatarFilename: 'avatar.jpg',
@@ -1490,3 +1490,173 @@ Rodamos o teste e ele passou. Estamos em `GREEN`, onde o teste é o mais tosco p
 ```bash
 yarn test src/modules/users/services/SendForgotPasswordEmailService.spec.ts
 ```
+
+## Recuperação de senha
+Adicionamos mais um teste para o service de enviar recuperação de senha
+```ts
+  it('should not be able to recover the password if the user does not exist', async () => {
+    const fakeUsersRepository = new FakeUsersRepository();
+    const fakeMailProvider = new FakeMailProvider();
+
+    const sendForgotPasswordEmail = new SendForgotPasswordEmailService(
+      fakeUsersRepository,
+      fakeMailProvider,
+    );
+
+    await expect(
+      sendForgotPasswordEmail.execute({
+        email: 'johndoei@example.com',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+```
+Que falha, então, precisamos adicionar a checkagem do email de um usuário existente no service
+```ts
+class SendForgotPasswordEmailService {
+//...
+  public async execute({ email }: IRequest): Promise<void> {
+    const userExists = await this.usersRepository.findByEmail(email);
+
+    if (!userExists) {
+      throw new AppError('User does not exist.');
+    }
+
+    this.mailProvider.sendMail(
+      email,
+      'Pedido de recuperação de senha recebido.',
+    );
+  }
+```
+Agora o teste passou.
+
+Vamos verificar que para resetar a senha, precisamos identificar o usuário, e o email que vou enviar para ele tem que ter um token que diga que foi gerado pela nossa aplicação e que seja possível identificar o usuário que recuperou essa senha.
+
+Então, precisamos ter um lugar de armazenamento de tokens de senha na nossa aplicação. Vou criar uma entitite `@modules/users/infra/typeorm/entities/UserToken.ts`
+```ts
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Generated,
+} from 'typeorm';
+
+@Entity('user_tokens')
+export default class UserToken {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  @Generated()
+  token: string;
+
+  @Column()
+  user_id: string;
+
+  @CreateDateColumn()
+  created_at: Date;
+
+  @UpdateDateColumn()
+  updated_at: Date;
+}
+```
+
+E criamos a interface do repository contendo somente o método `generate`
+```ts
+import UserToken from '../infra/typeorm/entities/UserToken';
+
+export default interface IUserTokenRepository {
+  generate(user_id: string): Promise<UserToken>;
+}
+```
+
+Podemos criar agora um FakeRepository do UserToken
+```ts
+import { uuid } from 'uuidv4';
+import UserToken from '@modules/users/infra/typeorm/entities/UserToken';
+import IUserTokenRepository from '../IUserTokenRepository';
+
+export default class FakeUserTokenRepository implements IUserTokenRepository {
+  private userTokens: UserToken[] = [];
+
+  public async generate(user_id: string): Promise<UserToken> {
+    const userToken = new UserToken();
+
+    Object.assign(userToken, {
+      user_id,
+      id: uuid(),
+      token: uuid(),
+    });
+
+    this.userTokens.push(userToken);
+
+    return userToken;
+  }
+}
+```
+
+Criamos o teste
+```ts
+  it('should generate a forgot password token', async () => {
+    const fakeUsersRepository = new FakeUsersRepository();
+    const fakeMailProvider = new FakeMailProvider();
+    const fakeUsersTokenRepository = new FakeUserTokensRepository();
+
+    const generateToken = jest.spyOn(fakeUserTokenRepository, 'generate');
+
+    const sendForgotPasswordEmail = new SendForgotPasswordEmailService(
+      fakeUsersRepository,
+      fakeMailProvider,
+    );
+
+    const user = await fakeUsersRepository.create({
+      name: 'John Doe',
+      email: 'johndoei@example.com',
+      password: '123456',
+    });
+
+    await sendForgotPasswordEmail.execute({
+      email: 'johndoei@example.com',
+    });
+
+    expect(generateToken).toHaveBeenCalledWith(user.id);
+  });
+```
+Que falha, então vamos arrumar a injeção de dependência no service
+```ts
+class SendForgotPasswordEmailService {
+  constructor(
+    //...
+    @inject('UserTokensRepository')
+    private userTokenRepository: IUserTokensRepository,
+  ) {}
+
+  public async execute({ email }: IRequest): Promise<void> {
+  //...
+    await this.userTokenRepository.generate(userExists.id);
+
+```
+
+E adicionamos essa nova dependência nos testes. Porém, verificamos que estamos repetindo muito código instanciando todas as vezes os fakeRepositories e o service. Dessa forma, vamos criar o `beforeEach` do jest
+```ts
+let fakeUsersRepository: FakeUsersRepository;
+let fakeMailProvider: FakeMailProvider;
+let fakeUserTokensRepository: FakeUserTokensRepository;
+let sendForgotPasswordEmail: SendForgotPasswordEmailService;
+
+describe('UpdateUserAvatar', () => {
+  beforeEach(() => {
+    fakeUsersRepository = new FakeUsersRepository();
+    fakeMailProvider = new FakeMailProvider();
+    fakeUserTokensRepository = new FakeUserTokensRepository();
+
+    sendForgotPasswordEmail = new SendForgotPasswordEmailService(
+      fakeUsersRepository,
+      fakeMailProvider,
+      fakeUserTokensRepository,
+    );
+  });
+```
+
+Pronto, mais um teste está passando.
