@@ -1660,3 +1660,109 @@ describe('UpdateUserAvatar', () => {
 ```
 
 Pronto, mais um teste está passando.
+
+## Reset de senha
+Vamos criar o service de reset de senha. Copio do service de esqueci a senha, removo o mail provider. Aqui vamos receber a senha do usuário e o token que criamos de recuperação de senha.
+```ts
+import { injectable, inject } from 'tsyringe';
+
+import IUsersRepository from '../repositories/IUsersRepository';
+import IUserTokensRepository from '../repositories/IUserTokenRepository';
+
+interface IRequest {
+  token: string;
+  password: string;
+}
+
+@injectable()
+class ResetPasswordService {
+  constructor(
+    @inject('UsersRepository')
+    private usersRepository: IUsersRepository,
+
+    @inject('UserTokensRepository')
+    private userTokenRepository: IUserTokensRepository,
+  ) {}
+
+  public async execute({ token, password }: IRequest): Promise<void> {}
+}
+
+export default ResetPasswordService;
+```
+
+Agora vamos para o teste e copio a estrutura do teste de recuperação de senha. Aqui não terei o fakeMailProvider.
+```ts
+describe('ResetPasswordService', () => {
+  beforeEach(() => {
+    fakeUsersRepository = new FakeUsersRepository();
+    fakeUserTokensRepository = new FakeUserTokensRepository();
+
+    resetPasswordService = new ResetPasswordService(
+      fakeUsersRepository,
+      fakeUserTokensRepository,
+    );
+  });
+
+  it('should be able to reset the password', async () => {
+    const user = await fakeUsersRepository.create({
+      name: 'John Doe',
+      email: 'johndoei@example.com',
+      password: '123456',
+    });
+
+    const { token } = await fakeUserTokensRepository.generate(user.id);
+
+    await resetPasswordService.execute({
+      token,
+      password: '123123',
+    });
+
+    const updatedUser = await fakeUsersRepository.findById(user.id);
+
+    expect(updatedUser?.password).toBe('123123');
+  });
+});
+```
+E o teste falhou pois o service está vazio ainda.
+
+Adicionamos em IUserTokenRepository a busca por token
+```ts
+export default interface IUserTokenRepository {
+  generate(user_id: string): Promise<UserToken>;
+  findByToken(token: string): Promise<UserToken | undefined>;
+}
+```
+E vamos implementar dentro do nosso fake
+```ts
+class ResetPasswordService {
+//...
+  public async findByToken(token: string): Promise<UserToken | undefined> {
+    const userToken = this.userTokens.find(
+      eachToken => eachToken.token === token,
+    );
+    return userToken;
+  }
+```
+
+Refatoramos o service
+```ts
+class ResetPasswordService {
+  //...
+  public async execute({ token, password }: IRequest): Promise<void> {
+    const userToken = await this.userTokenRepository.findByToken(token);
+
+    if (!userToken) {
+      throw new AppError('User token does not exist.');
+    }
+    const user = await this.usersRepository.findById(userToken.user_id);
+
+    if (!user) {
+      throw new AppError('User does not exist.');
+    }
+
+    user.password = password;
+
+    await this.usersRepository.save(user);
+  }
+}
+```
