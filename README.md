@@ -1766,3 +1766,109 @@ class ResetPasswordService {
   }
 }
 ```
+
+## Finalizando os testes
+**Hash de senha**: vamos adicionar o teste de criação do hash da senha no teste anterior. E também o hashProvider no service de reset de senha.
+```ts
+class ResetPasswordService {
+  constructor(
+//...
+    @inject('HashProvider')
+    private hashProvider: IHashProvider,
+  ) {}
+  //...
+    user.password = await this.hashProvider.generateHash(password);
+```
+
+```ts
+  beforeEach(() => {
+    fakeUsersRepository = new FakeUsersRepository();
+    fakeUserTokensRepository = new FakeUserTokensRepository();
+    fakeHashProvider = new FakeHashProvider();
+
+    resetPasswordService = new ResetPasswordService(
+      fakeUsersRepository,
+      fakeUserTokensRepository,
+      fakeHashProvider,
+    );
+  });
+  //...
+    const generateHash = jest.spyOn(fakeHashProvider, 'generateHash');
+  //...
+    expect(generateHash).toHaveBeenCalledWith('123123');
+```
+
+**Token inexistente**: vamos criar esse teste
+```ts
+  it('should not be able to reset the password with a non-existing token', async () => {
+    await expect(
+      resetPassword.execute({
+        token: 'non-existing-token',
+        password: '123123',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+```
+
+**Usuário inexistente**: vamos criar esse teste
+```ts
+  it('should not be able to reset the password with a non-existing user', async () => {
+    const { token } = await fakeUserTokensRepository.generate(
+      'non-existing-user',
+    );
+    await expect(
+      resetPassword.execute({
+        token,
+        password: '123123',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+```
+
+**Token expirado (mais de 2h)**: vamos criar esse teste. Precisamos mockar o timestamp.
+```ts
+  it('should not be able to reset the password with an expired token (more than 2h)', async () => {
+    const user = await fakeUsersRepository.create({
+      name: 'John Doe',
+      email: 'johndoe@example.com',
+      password: '123456',
+    });
+
+    const { token } = await fakeUserTokensRepository.generate(user.id);
+
+    jest.spyOn(Date, 'now').mockImplementationOnce(() => {
+      const customDate = new Date();
+      return customDate.setHours(customDate.getHours() + 3);
+    });
+
+    await expect(
+      resetPassword.execute({
+        token,
+        password: '123123',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+```
+
+Percebemos que esquecemos de adicionar o created_at no FakeUserTokensRepository.
+```ts
+//...
+    const userToken = new UserToken();
+
+    Object.assign(userToken, {
+      user_id,
+      id: uuid(),
+      token: uuid(),
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+```
+
+E no service adicionamos a lógica para verificação da validade do token
+```ts
+    const createdAtToken = userToken.created_at;
+
+    if (differenceInHours(Date.now(), createdAtToken) > 2) {
+      throw new AppError('Token has been expired.');
+    }
+```
