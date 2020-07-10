@@ -2473,3 +2473,202 @@ E finalmente, alteramos nosso service `SendForgotPasswordEmailService`
     });
 ```
 Testamos no Insomnia e verificamos se o e-mail foi configurado e o link está ok. Rodamos os testes também pelo terminal.
+
+## Atualização do perfil
+Vamos criar um service de atualização do perfil, onde o usuário pode alterar nome, email, senha.
+```ts
+import { injectable, inject } from 'tsyringe';
+
+// import AppError from '@shared/errors/AppError';
+import IHashProvider from '../providers/HashProvider/models/IHashProvider';
+import IUsersRepository from '../repositories/IUsersRepository';
+
+import User from '../infra/typeorm/entities/User';
+
+interface IRequest {
+  user_id: string;
+  name: string;
+  email: string;
+  old_password?: string;
+  password?: string;
+}
+
+@injectable()
+class UpdateProfileService {
+  constructor(
+    @inject('UsersRepository')
+    private usersRepository: IUsersRepository,
+
+    @inject('HashProvider')
+    private hashProvider: IHashProvider,
+  ) {}
+
+  public async execute({ user_id, name, email }: IRequest): Promise<void> {
+    const user = await this.usersRepository.findById(user_id);
+    if (!user) {
+      throw new AppError('User not found.');
+    }
+    return user;
+  }
+}
+
+export default UpdateProfileService;
+```
+
+Deixaremos vazio por enquanto pois vamos iniciar com o TDD. Criamos o arquivo de teste desse service.
+```ts
+// import AppError from '@shared/errors/AppError';
+
+import FakeHashProvider from '../providers/HashProvider/fakes/FakeHashProvider';
+import FakeUsersRepository from '../repositories/fake/FakeUsersRepository';
+import UpdateProfileService from './UpdateProfileService';
+
+let fakeUsersRepository: FakeUsersRepository;
+let fakeHashProvider: FakeHashProvider;
+let updateProfile: UpdateProfileService;
+
+describe('UpdateProfile', () => {
+  beforeEach(() => {
+    fakeUsersRepository = new FakeUsersRepository();
+    fakeHashProvider = new FakeHashProvider();
+
+    updateProfile = new UpdateProfileService(
+      fakeUsersRepository,
+      fakeHashProvider,
+    );
+  });
+
+  it('should be able to update a profile', async () => {
+    const user = await fakeUsersRepository.create({
+      name: 'John Doe',
+      email: 'johndoei@example.com',
+      password: '123456',
+    });
+
+    const updatedUser = await updateProfile.execute({
+      user_id: user.id,
+      name: 'Maria Silva',
+      email: 'maria@example.com',
+    });
+
+    expect(updatedUser.name).toBe('Maria Silva');
+    expect(updatedUser.email).toBe('maria@example.com');
+  });
+});
+```
+E queremos que o teste falhe, pois ainda não implementamos nada.
+
+Adicionamos a lógica para então fazer o update
+```ts
+class UpdateProfileService {
+  //...
+  public async execute({ user_id, name, email }: IRequest): Promise<User> {
+    const user = await this.usersRepository.findById(user_id);
+    if (!user) {
+      throw new AppError('User not found.');
+    }
+    user.name = name;
+    user.email = email;
+    return this.usersRepository.save(user);
+  }
+```
+E testamos novamente.
+
+Agora, o usuário não pode atualizar seu perfil usando um e-mail de outro usuário. Vamos criar esse teste.
+```ts
+  it('should not be able to update the profile using an email address from another user', async () => {
+    await fakeUsersRepository.create({
+      name: 'John Doe',
+      email: 'johndoei@example.com',
+      password: '123456',
+    });
+
+    const user = await fakeUsersRepository.create({
+      name: 'Maria Teste',
+      email: 'teste@example.com',
+      password: '123456',
+    });
+
+    await expect(
+      updateProfile.execute({
+        user_id: user.id,
+        name: 'Maria Silva',
+        email: 'johndoei@example.com',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+```
+O teste vai falhar, então adicionamos essa lógica.
+```ts
+//...
+    const userWithUpdateEmail = await this.usersRepository.findByEmail(email);
+    if (userWithUpdateEmail && userWithUpdateEmail.id !== user_id) {
+      throw new AppError('E-mail already in use.');
+    }
+```
+
+Vamos adicionar o teste caso o usuário não forneça a senha antiga.
+```ts
+  it('should not be able to update the password without old password', async () => {
+    const user = await fakeUsersRepository.create({
+      name: 'John Doe',
+      email: 'johndoei@example.com',
+      password: '123456',
+    });
+
+    await expect(
+      updateProfile.execute({
+        user_id: user.id,
+        name: 'Maria Silva',
+        email: 'maria@example.com',
+        password: '123123',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+```
+
+E como o teste vai falhar, vamos adicionar a lógica
+```ts
+//...
+    if (password && !old_password) {
+      throw new AppError(
+        'You need to inform the old password to set a new one.',
+      );
+    }
+```
+
+E também precisamos do teste caso a senha antiga esteja errada
+```ts
+  it('should not be able to update the password with the wrong old password', async () => {
+    const user = await fakeUsersRepository.create({
+      name: 'John Doe',
+      email: 'johndoei@example.com',
+      password: '123456',
+    });
+
+    await expect(
+      updateProfile.execute({
+        user_id: user.id,
+        name: 'Maria Silva',
+        email: 'maria@example.com',
+        old_password: 'wrong-old-password',
+        password: '123123',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+```
+E arrumamos a lógica desse pedaço do service.
+```ts
+    if (password && old_password) {
+      const checkOldPassword = await this.hashProvider.compareHash(
+        old_password,
+        user.password,
+      );
+
+      if (!checkOldPassword) {
+        throw new AppError('Old password does not match.');
+      }
+
+      user.password = await this.hashProvider.generateHash(password);
+    }
+```
