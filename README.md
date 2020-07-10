@@ -2069,3 +2069,117 @@ container.registerSingleton<IUserTokenRepository>(
   UserTokensRepository,
 );
 ```
+
+## Emails em desenvolvimento
+Vamos usar o [Ethereal](https://ethereal.email/) como email provider de desenvolvimento. Instalamos o nodemailer e suas tipagens.
+```bash
+yarn add nodemailer
+
+yarn add -D @types/nodemailer
+```
+Criamos `@shared/container/providers/MailProvider/implementations/EtherealMailProvider.ts`, importamos o nodemailer e também colocamos no método `constructor` tudo que vai ser executado de uma vez só. Seguindo a documentação do [Ethereal](https://ethereal.email/).
+```ts
+import nodemailer, { Transporter } from 'nodemailer';
+import IMailProvider from '../models/IMailProvider';
+
+export default class EtherealMailProvider implements IMailProvider {
+  private client: Transporter;
+
+  constructor() {
+    nodemailer.createTestAccount().then(account => {
+      const transporter = nodemailer.createTransport({
+        host: account.smtp.host,
+        port: account.smtp.port,
+        secure: account.smtp.secure,
+        auth: {
+          user: account.user,
+          pass: account.pass,
+        },
+      });
+      this.client = transporter;
+    });
+  }
+
+  public async sendMail(to: string, body: string): Promise<void> {
+    const message = await this.client.sendMail({
+      from: 'Equipe GoBarber <equipe@gobarber.com>',
+      to,
+      subject: 'Recuperação de senha',
+      text: body,
+    });
+
+    console.log('Message sent: %s', message.messageId);
+    console.log('Preview URL: %s', nodemailer.getTestMessageUrl(message));
+  }
+}
+```
+
+Em `@shared/container/providers/index.ts`
+```ts
+import EtherealMailProvider from './MailProvider/implementations/EtherealMailProvider';
+//...
+container.registerSingleton<IMailProvider>(
+  'MailProvider',
+  EtherealMailProvider,
+);
+```
+Agora, quando nosso service `SendForgotPasswordEmailService` injetar essa dependência, vai funcionar.
+
+Tentamos rodar mas esquecemos de importar direito depois que fizermos alteração do `uploadConfig` lá no nosso server
+```ts
+app.use('/files', express.static(uploadConfig.uploadFolder));
+```
+
+Vamos abrir o `Insomnia` para testar as rotas. Criamos o POST para `/forgot/password` com o seguinte body
+```json
+{
+	"email": "cintiafumi@gmail.com"
+}
+```
+
+Deu um erro e fazemos a seguinte modificação
+```ts
+container.registerInstance<IMailProvider>(
+  'MailProvider',
+  new EtherealMailProvider(),
+);
+```
+Mas agora deu o erro no terminal
+```bash
+Message sent: undefined
+Preview URL: false
+```
+
+E faltou outro `await` no `SendForgotPasswordEmailService`
+```ts
+    await this.mailProvider.sendMail(
+      email,
+      'Pedido de recuperação de senha recebido.',
+    );
+```
+Agora no terminal voltou
+```bash
+Message sent: <be3fe5b5-ee5c-efed-33d2-470596e48cb8@gobarber.com>
+Preview URL: https://ethereal.email/message/Xwe7dKm7TzYUu-jRXwe7qiZV-XC0M2nrAAAAAW5QnuTkWh7Mla9WJu4pSh4
+```
+Posso abrir essa url no meu navegador e vemos o email.
+
+Para vermos qual token gerado, vamos adicionar na mensagem do email o token gerado. Assim, conseguimos testar no Insomnia
+```ts
+    const { token } = await this.userTokenRepository.generate(userExists.id);
+
+    await this.mailProvider.sendMail(
+      email,
+      `Pedido de recuperação de senha recebido: ${token}`,
+    );
+```
+
+E no Insomia, vamos criar o POST de `/password/reset` colocando no body esse token que veio no email
+```json
+{
+	"token": "bc962683-2fc8-44f4-abd2-591d970888dc",
+	"password": "123123"
+}
+```
+
+Agora, na rota de autenticação `/sessions`, só conseguimos autenticar com a nova senha
