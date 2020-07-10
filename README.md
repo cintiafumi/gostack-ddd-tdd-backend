@@ -2183,3 +2183,212 @@ E no Insomia, vamos criar o POST de `/password/reset` colocando no body esse tok
 ```
 
 Agora, na rota de autenticação `/sessions`, só conseguimos autenticar com a nova senha
+
+##
+Vamos deixar o layout do nosso email melhor, e para isso, iremos utilizar um template de email. Também criaremos um provider para lidar com a parte do template, pois é algo que será reaproveitado do nosso código. Vamos criar a estrutura de pastas
+```
+  src
+    shared
+      container
+        providers
+          MailTemplateProvider
+            fakes
+              FakeMailTemplateProvider.ts
+            implementations
+              HandlebarsMailTemplateProvider.ts
+            models
+              IMailTemplateProvider.ts
+```
+
+No model, só teremos um métoto que vai ser o `parse` que vai receber outras informações, então eu vou criar uma `dto` contendo as informações necessárias para montar esse template
+```ts
+interface ITemplateVariables {
+  [key: string]: string | number;
+}
+
+export default interface IMailTemplateParseDTO {
+  template: string;
+  variables: ITemplateVariables;
+}
+```
+
+```ts
+import IMailTemplateParseDTO from '../dto/IMailTemplateParseDTO';
+
+export default interface IMailTemplateProvider {
+  parse(data: IMailTemplateParseDTO): Promise<string>;
+}
+```
+
+Agora vamos criar a `FakeTemplateProvider` que só vai retornar direto o template
+```ts
+import IMailTemplateProvider from '../models/IMailTemplateProvider';
+import IMailTemplateParseDTO from '../dto/IMailTemplateParseDTO';
+
+class FakeMailTemplateProvider implements IMailTemplateProvider {
+  public async parse({ template }: IMailTemplateParseDTO): Promise<string> {
+    return template;
+  }
+}
+
+export default FakeMailTemplateProvider;
+```
+
+Vamos criar o template provider de verdade. Usaremos o [Handlebars](https://handlebarsjs.com/). Importamos o `handlebars` na aplicação
+```bash
+yarn add handlebars
+```
+
+No meu `HandlebarsMailTemplateProvider`
+```ts
+import handlebars from 'handlebars';
+
+import IMailTemplateProvider from '../models/IMailTemplateProvider';
+import IMailTemplateParseDTO from '../dto/IMailTemplateParseDTO';
+
+class HandlebarsMailTemplateProvider implements IMailTemplateProvider {
+  public async parse({
+    template,
+    variables,
+  }: IMailTemplateParseDTO): Promise<string> {
+    const parseTemplate = handlebars.compile(template);
+    return parseTemplate(variables);
+  }
+}
+
+export default HandlebarsMailTemplateProvider;
+```
+
+E importamos esse provider no nosso `@shared/container/providers` para fazermos a injeção de dependência
+```ts
+import IMailTemplateProvider from './MailTemplateProvider/models/IMailTemplateProvider';
+import HandlebarsMailTemplateProvider from './MailTemplateProvider/implementations/HandlebarsMailTemplateProvider';
+//...
+container.registerSingleton<IMailTemplateProvider>(
+  'MailTemplateProvider',
+  HandlebarsMailTemplateProvider,
+);
+```
+
+Agora, no nosso service de `SendForgotPasswordService`, vemos que esse `MailTemplateProvider` tem muito mais a ver com o `MailProvier`, então, no service, já deveria resolver tudo somente com o `MailProvider`. Para isso, vamos fazer algumas alterações.
+
+Vamos criar `MailProvider/dtos` para no `ISendMailDTO`
+```ts
+import IMAilTemplateParseDTO from '@shared/container/providers/MailTemplateProvider/dto/IMailTemplateParseDTO';
+
+interface IMailContact {
+  name: string;
+  email: string;
+}
+
+export default interface ISendMailDTO {
+  to: IMailContact;
+  from?: IMailContact;
+  subject: string;
+  templateData: IMAilTemplateParseDTO;
+}
+```
+
+Importamos esse dto para dentro do nosso `IMailProvider`
+```ts
+import ISendMailDTO from '../dto/ISendMailDTO';
+
+export default interface IMailProvider {
+  sendMail(data: ISendMailDTO): Promise<void>;
+}
+```
+
+Agora temos que modificar lá no `FakeMailProvider`
+```ts
+import IMailProvider from '../models/IMailProvider';
+import ISendMailDTO from '../dto/ISendMailDTO';
+
+export default class FakeMailProvider implements IMailProvider {
+  private messages: ISendMailDTO[] = [];
+
+  public async sendMail(message: ISendMailDTO): Promise<void> {
+    this.messages.push(message);
+  }
+}
+```
+
+Mudamos também em `EtherealMailProvider`
+```ts
+export default class EtherealMailProvider implements IMailProvider {
+//...
+  public async sendMail({ to, from, subject }: ISendMailDTO): Promise<void> {
+    const message = await this.client.sendMail({
+      from: {
+        name: from?.name || 'Equipe GoBarber',
+        address: from?.email || 'equipe@gobarber.com',
+      },
+      to: {
+        name: to.name,
+        address: to.email,
+      },
+      subject,
+      text: 'Teste',
+    });
+```
+
+E no service `SendForgotPasswordEmailService`, alteramos o seguinte
+```ts
+    await this.mailProvider.sendMail({
+      to: {
+        name: userExists.name,
+        email: userExists.email,
+      },
+      subject: '[GoBarber] Recuperação de senha',
+      templateData: {
+        template: 'Olá, {{name}}: {{token}}',
+        variables: {
+          name: userExists.name,
+          token,
+        },
+      },
+    });
+```
+
+E vamos fazer a injeção de dependência no provider `EtherealMailProvider`
+```ts
+@injectable()
+import { injectable, inject } from 'tsyringe';
+//...
+export default class EtherealMailProvider implements IMailProvider {
+  private client: Transporter;
+
+  constructor(
+    @inject('MailTemplateProvider')
+    private mailTemplateProvider: IMailTemplateProvider,
+  ) {
+    //...
+  }
+  public async sendMail({
+    to,
+    from,
+    subject,
+    templateData,
+  }: ISendMailDTO): Promise<void> {
+    const message = await this.client.sendMail({
+      from: {
+        name: from?.name || 'Equipe GoBarber',
+        address: from?.email || 'equipe@gobarber.com',
+      },
+      to: {
+        name: to.name,
+        address: to.email,
+      },
+      subject,
+      html: await this.mailTemplateProvider.parse(templateData),
+    });
+```
+
+E na injeção de dependência, temos que colocar o resolver para entender. Detalhe para a ordem dos providers
+```ts
+container.registerInstance<IMailProvider>(
+  'MailProvider',
+  container.resolve(EtherealMailProvider),
+);
+```
+
+Rodamos a aplicação. Enviamos um email pela rota `/password/forgot` e então vemos o token dentro do email para então fazer outro request com alteração de senha
