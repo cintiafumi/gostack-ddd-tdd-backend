@@ -2391,4 +2391,85 @@ container.registerInstance<IMailProvider>(
 );
 ```
 
-Rodamos a aplicação. Enviamos um email pela rota `/password/forgot` e então vemos o token dentro do email para então fazer outro request com alteração de senha
+Rodamos a aplicação. Enviamos um email pela rota `/password/forgot` e então vemos o token dentro do email para então fazer outro request com alteração de senha.
+
+## Template engine
+Agora vamos montar um template com html mesmo ao invés de só um texto simples de email. Vamos criar uma pasta views dentro de users e um arquivo `users/views/forgot_password.hbs` para criarmos nosso html.
+```hbs
+<style>
+  .message-content {
+    font-family: Arial, Helvetica, sans-serif;
+    max-width: 600px;
+    font-size: 18px;
+    line-height: 21px;
+  }
+</style>
+
+<div class="message-content">
+  <p>Olá, {{name}}</p>
+  <p>Parece que uma troca de senha para sua conta foi solicitada.</p>
+  <p>Se foi você, então clique no link abaixo para escolher uma nova senha:</p>
+  <p>
+    <a href="{{link}}">Resetar minha senha</a>
+  </p>
+  <p>Se não foi você, então descarte esse e-mail.</p>
+  <p>
+    Obrigada!<br />
+    <strong>Equipe GoBarber</strong>
+  </p>
+</div>
+```
+
+Vamos no nosso arquivo `IMailTemplateParseDTO.ts`, ao invés de recebermos um `template`, vamos receber nosso `file`
+```ts
+export default interface IMailTemplateParseDTO {
+  file: string;
+  variables: ITemplateVariables;
+}
+```
+
+E vamos mexer onde quebrou. No `FakeMailTemplateProvider`, vamos retornar somente um texto.
+```ts
+class FakeMailTemplateProvider implements IMailTemplateProvider {
+  public async parse(): Promise<string> {
+    return 'Mail content';
+```
+
+Alteramos aqui também no `HandlebarsMailTemplateProvider`
+```ts
+class HandlebarsMailTemplateProvider implements IMailTemplateProvider {
+  public async parse({
+    file,
+    variables,
+  }: IMailTemplateParseDTO): Promise<string> {
+    const templateFileContent = await fs.promises.readFile(file, {
+      encoding: 'utf-8',
+    });
+    const parseTemplate = handlebars.compile(templateFileContent);
+```
+
+E finalmente, alteramos nosso service `SendForgotPasswordEmailService`
+```ts
+    const forgotPasswordTemplate = path.resolve(
+      __dirname,
+      '..',
+      'views',
+      'forgot_password.hbs',
+    );
+
+    await this.mailProvider.sendMail({
+      to: {
+        name: userExists.name,
+        email: userExists.email,
+      },
+      subject: '[GoBarber] Recuperação de senha',
+      templateData: {
+        file: forgotPasswordTemplate,
+        variables: {
+          name: userExists.name,
+          link: `http://localhost/3000/reset_password?token=${token}`,
+        },
+      },
+    });
+```
+Testamos no Insomnia e verificamos se o e-mail foi configurado e o link está ok. Rodamos os testes também pelo terminal.
