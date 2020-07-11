@@ -2672,3 +2672,153 @@ E arrumamos a lógica desse pedaço do service.
       user.password = await this.hashProvider.generateHash(password);
     }
 ```
+
+## Rota e controller do perfil
+Ao invés de adicionar o `update` no `UserController`, vamos criar um controller só de profile pois estamos fazendo update de um usuário logado na aplicação.
+
+Em `ProfileController` vamos copiar a estrutura do `UsersController`
+```ts
+import { Request, Response } from 'express';
+import { container } from 'tsyringe';
+
+import UpdateProfileService from '@modules/users/services/UpdateProfileService';
+
+export default class ProfileControler {
+  public async show(request: Request, response: Response): Promise<Response> {
+    // exibicao do perfil
+  }
+
+  public async update(request: Request, response: Response): Promise<Response> {
+    const user_id = request.user.id;
+
+    const { name, email, password, old_password } = request.body;
+
+    const updateProfile = container.resolve(UpdateProfileService);
+
+    const user = await updateProfile.execute({
+      user_id,
+      name,
+      email,
+      password,
+      old_password,
+    });
+
+    delete user.password;
+
+    return response.json(user);
+  }
+}
+```
+Também já deixamos a estrutura do `show` de profile.
+
+Vamos para as rotas e criamos a rota de profile `profile.routes.ts`. Precisamos usar o `ensureAuthenticated`.
+```ts
+import { Router } from 'express';
+import ensureAuthenticated from '../middlewares/ensureAuthenticated';
+import ProfileController from '../controllers/ProfileController';
+
+const profileRouter = Router();
+const profileController = new ProfileController();
+
+profileRouter.use(ensureAuthenticated);
+profileRouter.put('/', profileController.update);
+
+export default profileRouter;
+```
+
+E importamos nas rotas principais.
+```ts
+import profileRouter from '@modules/users/infra/http/routes/profile.routes';
+//...
+routes.use('/profile', profileRouter);
+```
+
+Também vamos criar o service para mostrar o profile `ShowProfileService` e copiamos a estrutura do `UpdateProfileService`.
+```ts
+import { injectable, inject } from 'tsyringe';
+
+import AppError from '@shared/errors/AppError';
+import IUsersRepository from '../repositories/IUsersRepository';
+import User from '../infra/typeorm/entities/User';
+
+interface IRequest {
+  user_id: string;
+}
+
+@injectable()
+class ShowProfileService {
+  constructor(
+    @inject('UsersRepository')
+    private usersRepository: IUsersRepository,
+  ) {}
+
+  public async execute({ user_id }: IRequest): Promise<User> {
+    const user = await this.usersRepository.findById(user_id);
+    if (!user) {
+      throw new AppError('User not found.');
+    }
+    return user;
+  }
+}
+
+export default ShowProfileService;
+```
+Agora conseguimos importar o `ShowProfileService` no `ProfileController`
+```ts
+export default class ProfileControler {
+  public async show(request: Request, response: Response): Promise<Response> {
+    const user_id = request.user.id;
+    const showProfile = container.resolve(ShowProfileService);
+    const user = await showProfile.execute({ user_id });
+    return response.json(user);
+  }
+```
+
+E na rota, adicionamos o GET para mostrar o profile.
+```ts
+profileRouter.get('/', profileController.show);
+```
+
+Fazemos o teste
+```ts
+import AppError from '@shared/errors/AppError';
+
+import FakeUsersRepository from '../repositories/fake/FakeUsersRepository';
+import ShowProfileService from './ShowProfileService';
+
+let fakeUsersRepository: FakeUsersRepository;
+let showProfile: ShowProfileService;
+
+describe('UpdateProfile', () => {
+  beforeEach(() => {
+    fakeUsersRepository = new FakeUsersRepository();
+    showProfile = new ShowProfileService(fakeUsersRepository);
+  });
+
+  it('should be able to show a profile', async () => {
+    const user = await fakeUsersRepository.create({
+      name: 'John Doe',
+      email: 'johndoei@example.com',
+      password: '123456',
+    });
+
+    const profile = await showProfile.execute({
+      user_id: user.id,
+    });
+
+    expect(profile.name).toBe('John Doe');
+    expect(profile.email).toBe('johndoei@example.com');
+  });
+
+  it('should not be able to show the profile from a non-existent user', async () => {
+    await expect(
+      showProfile.execute({
+        user_id: 'non-existing-user',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+});
+```
+E testamos. Vimos no coverage que faltou um teste no `UpdateProfileService`, então também adicionamos.
+
+Para testarmos no Insomnia, criamos os requests nas rotas de `/profile`. Primeiro, pegamos o token de autenticação de `/sessions` e usamos-o para então ver as rotas de profile.
