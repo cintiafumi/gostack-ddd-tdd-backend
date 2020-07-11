@@ -356,6 +356,7 @@ class AppointmentsRepository implements IAppointmentsRepository {
         ),
       },
     });
-    return appointments;
+    console.log(appointments);
+    return [{ day: 1, available: false }];
   }
 ```
