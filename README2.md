@@ -219,3 +219,143 @@ import providersRouter from '@modules/appointments/infra/http/routes/providers.r
 routes.use('/providers', providersRouter);
 ```
 Testamos no Insomnia a rota de GET em `/providers` com o token de uma sessão logada.
+
+
+## Filtrando agendamentos por mês
+Vamos para esse requisito: _"O usuário deve poder listar os dias de um mês com pelo menos um horário disponível de um prestador"_.
+
+Vamos criar o service `ListProviderMonthAvailability`
+```ts
+import { injectable, inject } from 'tsyringe';
+
+interface IRequest {
+  user_id: string;
+  month: number;
+  year: number;
+}
+
+type IResponse = Array<{
+  day: number;
+  available: boolean;
+}>;
+
+@injectable()
+class ListProviderMonthAvailabilityService {
+  constructor() {}
+
+  public async execute({ user_id, year, month }: IRequest): Promise<IResponse> {
+    return [{ day: 1, available: false }];
+  }
+}
+
+export default ListProviderMonthAvailabilityService;
+```
+
+E já vamos criar o primeiro teste
+```ts
+import FakeAppointmentsRepository from '@modules/appointments/repositories/fake/FakeAppointmentsRepository';
+import ListProviderMonthAvailabilityService from './ListProviderMonthAvailabilityService';
+
+let fakeAppointmentsRepository: FakeAppointmentsRepository;
+let listProviderMonthAvailability: ListProviderMonthAvailabilityService;
+
+describe('ListProviderMonthAvailability', () => {
+  beforeEach(() => {
+    fakeAppointmentsRepository = new FakeAppointmentsRepository();
+    listProviderMonthAvailability = new ListProviderMonthAvailabilityService();
+  });
+
+  it('should be able to list the month availability from provider', async () => {
+    await fakeAppointmentsRepository.create({
+      provider_id: 'user',
+      date: new Date(2020, 6, 20, 8, 0, 0),
+    });
+
+    await fakeAppointmentsRepository.create({
+      provider_id: 'user',
+      date: new Date(2020, 6, 20, 10, 0, 0),
+    });
+
+    await fakeAppointmentsRepository.create({
+      provider_id: 'user',
+      date: new Date(2020, 6, 21, 8, 0, 0),
+    });
+
+    const availability = await listProviderMonthAvailability.execute({
+      user_id: 'user',
+      year: 2020,
+      month: 7,
+    });
+
+    expect(availability).toEqual(
+      expect.arrayContaining([
+        { date: 19, availability: true },
+        { date: 20, availability: false },
+        { date: 21, availability: false },
+        { date: 22, availability: true },
+      ]),
+    );
+  });
+});
+```
+
+Para o service, precisaremos listar os appointments, então, injetamos `AppointmentsRepository` como dependência desse service e também precisamos adicionar um método e seu `dto`
+```ts
+export default interface IFindAllInMonth {
+  provider_id: string;
+  month: number;
+  year: number;
+}
+```
+
+Importamos no nosso `dto` no método novo `findAllInMonthFromProvider`
+```ts
+export default interface IAppointmentsRepository {
+  //...
+  findAllInMonthFromProvider(
+    data: IFindAllInMonthFromProviderDTO,
+  ): Promise<Appointment[]>;
+```
+
+Alteramos também no `FakeAppointmentsRepository`
+```ts
+class FakeAppointmentsRepository implements IAppointmentsRepository {
+  //...
+  public async findAllInMonthFromProvider({
+    provider_id,
+    month,
+    year,
+  }: IFindAllInMonthFromProviderDTO): Promise<Appointment[]> {
+    const appointments = this.appointments.filter(
+      appointment =>
+        appointment.provider_id === provider_id &&
+        getMonth(appointment.date) + 1 === month &&
+        getYear(appointment.date) === year,
+    );
+    return appointments;
+  }
+```
+
+E vamos no repository do banco
+```ts
+class AppointmentsRepository implements IAppointmentsRepository {
+  //...
+  public async findAllInMonthFromProvider({
+    provider_id,
+    month,
+    year,
+  }: IFindAllInMonthFromProviderDTO): Promise<Appointment[]> {
+    const parsedMonth = String(month).padStart(2, '0');
+
+    const appointments = await this.ormRepository.find({
+      where: {
+        provider_id,
+        date: Raw(
+          dateFieldName =>
+            `to_char(${dateFieldName}, 'MM-YYYY') = '${parsedMonth}-${year}'`,
+        ),
+      },
+    });
+    return appointments;
+  }
+```
