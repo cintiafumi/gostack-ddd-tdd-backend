@@ -2822,3 +2822,7 @@ describe('UpdateProfile', () => {
 E testamos. Vimos no coverage que faltou um teste no `UpdateProfileService`, então também adicionamos.
 
 Para testarmos no Insomnia, criamos os requests nas rotas de `/profile`. Primeiro, pegamos o token de autenticação de `/sessions` e usamos-o para então ver as rotas de profile.
+
+---
+
+Continuar em [Agendamento](README2.md)
