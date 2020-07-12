@@ -124,3 +124,20 @@ appointmentsRouter.get('/me', providerAppointmentsController.index);
 ```
 
 Rodamos a aplicação e vamos testar no Insomnia.
+
+## Configurando MongoDB
+Vamos usar 3 banco de dados diferentes somente para aprendizado. No MongoDB, não temos migrations. Utilizamos muito para Notificações.
+
+Como estamos utilizando docker, vamos criar nosso MongoDB pelo docker.
+```bash
+docker run --name mongodb -p 27017:27017 -d -t mongo
+```
+E quando já tivermos criado, podemos só rodar.
+```bash
+docker start mongodb
+```
+Como não conseguimover ver o MongoDB pelo DBeaver, vamos baixar o Compass. Abrimos o Compass e vamos abrir nova connection e escrevemos.
+```
+mongodb://localhost:27017
+```
+No Mongo, não chamamos de _registros_ e _tabela_, chamamos de _documentos_ e _schemas_.
