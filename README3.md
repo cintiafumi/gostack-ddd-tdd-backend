@@ -554,3 +554,46 @@ O arquivo `ormconfig.json` também é bom a gente deixar no `.gitignore`. Como j
 git rm --cached ormconfig.json
 ```
 Fazemos isso pois o banco de dados no ambiente de desenvolvimento e de produção serão bem diferentes.
+
+## Utilizando Class Transformer
+Vamos adicionar esse pacote
+```bash
+yarn add class-transformer
+```
+Usamos essa ferramenta para, por exemplo, quando enviamos o campo `password` para nosso front-end, não queremos mostrar isso. Então, precisamos transformar esses dados antes de enviá-los. Outra situação é que enviamos a url inteira de onde está nosso avatar do usuário.
+
+Então, vamos fazer isso dentro das nossas `entities`
+```ts
+import { Exclude, Expose } from 'class-transformer';
+@Entity('users')
+export default class User {
+//...
+  @Column()
+  @Exclude()
+  password: string;
+  //...
+  @Expose({ name: 'avatar_url' })
+  getAvatarUrl(): string | null {
+    return this.avatar
+      ? `${process.env.APP_API_URL}/files/${this.avatar}`
+      : null;
+  }
+}
+```
+
+E vamos adicionar essa informação dentro do nosso `SessionsController` para que exclua o password e mostre a url do avatar.
+```ts
+import { classToClass } from 'class-transformer';
+//...
+export default class SessionsControler {
+  public async create(request: Request, response: Response): Promise<Response> {
+    //...
+    return response.json({ user: classToClass(user), token });
+  }
+}
+```
+E fazemos isso em todos os controllers que retornar o `user`. Removendo sempre essa linha do código e colocando `classToClass(user)` na hora de retornar.
+```ts
+// delete user.password;
+return response.json(classToClass(user));
+```
