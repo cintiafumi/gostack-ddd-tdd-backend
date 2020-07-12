@@ -332,3 +332,60 @@ class CreateAppointmentService {
 ```
 
 E vamos testar criando um appointment pelo Insomia e verificamos no MongoDB Compass se apareceu a notificação.
+
+## Refatorando testes
+Vamos criar nosso `FakeNotificationsRepository` e precisamos instalar os types do mongodb.
+```bash
+yarn add -D @types/mongodb
+```
+
+```ts
+import { ObjectID } from 'mongodb';
+
+import INotificationsRepository from '@modules/notifications/repositories/INotificationsRepository';
+import ICreateNotificationDTO from '@modules/notifications/dtos/ICreateNotificationDTO';
+
+import Notification from '../../infra/typeorm/schemas/Notification';
+
+class FakeNotificationsRepository implements INotificationsRepository {
+  private notifications: Notification[] = [];
+
+  public async create({
+    content,
+    recipient_id,
+  }: ICreateNotificationDTO): Promise<Notification> {
+    const notification = new Notification();
+
+    Object.assign(notification, { id: new ObjectID(), content, recipient_id });
+
+    this.notifications.push(notification);
+
+    return notification;
+  }
+}
+
+export default FakeNotificationsRepository;
+```
+
+E vamos adicionar nos testes de `CreateAppointmentService`
+```ts
+import FakeNotificationsRepository from '@modules/notifications/repositories/fakes/FakeNotificationsRepository';
+import FakeAppointmentsRepository from '../repositories/fake/FakeAppointmentsRepository';
+import CreateAppointmentService from './CreateAppointmentService';
+
+let fakeAppointmentsRepository: FakeAppointmentsRepository;
+let fakeNotificationsRepository: FakeNotificationsRepository;
+let createAppointment: CreateAppointmentService;
+
+describe('CreateAppointment', () => {
+  beforeEach(() => {
+    fakeAppointmentsRepository = new FakeAppointmentsRepository();
+    fakeNotificationsRepository = new FakeNotificationsRepository();
+    createAppointment = new CreateAppointmentService(
+      fakeAppointmentsRepository,
+      fakeNotificationsRepository,
+    );
+  });
+```
+
+Rodamos os testes e verificamos se está tudo passando.
