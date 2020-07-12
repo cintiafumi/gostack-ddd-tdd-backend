@@ -141,3 +141,154 @@ Como não conseguimover ver o MongoDB pelo DBeaver, vamos baixar o Compass. Abri
 mongodb://localhost:27017
 ```
 No Mongo, não chamamos de _registros_ e _tabela_, chamamos de _documentos_ e _schemas_.
+
+## Estrutura de notificações
+Vamos utilizar o `TypeORM` também, então, vamos modificar um pouco o arquivo `ormconfig.json`
+```json
+[
+  {
+    "name": "default",
+    "type": "postgres",
+    "host": "localhost",
+    "port": "5432",
+    "username": "postgres",
+    "password": "docker",
+    "database": "gostack_gobarber",
+    "entities": [
+      "./src/modules/**/infra/typeorm/entities/*.ts"
+    ],
+    "migrations": [
+      "./src/shared/infra/typeorm/migrations/*.ts"
+    ],
+    "cli": {
+      "migrationsDir": "./src/shared/infra/typeorm/migrations"
+    }
+  },
+  {
+    "name": "mongo",
+    "type": "mongodb",
+    "host": "localhost",
+    "port": "27017",
+    "database": "gobarber",
+    "useUnifiedTopology": true,
+    "entities": [
+      "./src/modules/**/infra/typeorm/schemas/*.ts"
+    ]
+  }
+]
+```
+
+Também precisamos inicializar a conexão na infra `@shared/infra/typeorm/index.ts`
+```ts
+import { createConnections } from 'typeorm';
+createConnections();
+```
+
+E adicionamos a biblioteca `mongodb` no projeto
+```bash
+yarn add mongodb
+```
+
+E então rodamos a aplicação para ver se a conexão deu tudo certo.
+```bash
+yarn dev:server
+```
+
+Vamos criar um novo módulo chamado `notifications` com o seguinte esquema de pastas.
+```
+modules
+  notifications
+    dtos
+    infra
+      typeorm
+        schemas
+    repositories
+    services
+```
+
+E dentro do nosso `schema` vamos criar a entidade `Notification.ts`
+```ts
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  ObjectID,
+  ObjectIdColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+
+@Entity('notifications')
+class Notification {
+  @ObjectIdColumn()
+  id: ObjectID;
+
+  @Column()
+  content: string;
+
+  @Column('uuid')
+  recipient_id: string;
+
+  @Column({ default: false })
+  read: boolean;
+
+  @CreateDateColumn()
+  created_at: Date;
+
+  @UpdateDateColumn()
+  updated_at: Date;
+}
+
+export default Notification;
+```
+
+Vamos criar nosso `INotificationsRepository` que por enquanto só terá o método `create`
+```ts
+import ICreateNotificationDTO from '../dtos/ICreateNotificationDTO';
+import Notification from '../infra/typeorm/schemas/Notification';
+
+export default interface INotificationsRepository {
+  create(data: ICreateNotificationDTO): Promise<Notification>;
+}
+```
+
+Criamos também o `ICreateNotificationDTO` que só terá o `content` e o `recipient_id`
+```ts
+export default interface ICreateNotificationDTO {
+  content: string;
+  recipient_id: string;
+}
+```
+
+Dentro da pasta `typeorm` também criamos nosso `repositories/NotificationsRepository.ts` que vai mudar agora para usar `getMongoRepository` e `MongoRepository`, além de ter que passar no segundo parâmetro o nome do banco. Antes, no Postgres, o nome estava como 'default' e por isso, não precisávamos dizer qual banco era para usar.
+```ts
+import { getMongoRepository, MongoRepository } from 'typeorm';
+
+import INotificationsRepository from '@modules/notifications/repositories/INotificationsRepository';
+import ICreateNotificationDTO from '@modules/notifications/dtos/ICreateNotificationDTO';
+
+import Notification from '../schemas/Notification';
+
+class NotificationsRepository implements INotificationsRepository {
+  private ormRepository: MongoRepository<Notification>;
+
+  constructor() {
+    this.ormRepository = getMongoRepository(Notification, 'mongo');
+  }
+
+  public async create({
+    content,
+    recipient_id,
+  }: ICreateNotificationDTO): Promise<Notification> {
+    const notification = this.ormRepository.create({
+      content,
+      recipient_id,
+    });
+
+    await this.ormRepository.save(notification);
+
+    return notification;
+  }
+}
+
+export default NotificationsRepository;
+```
