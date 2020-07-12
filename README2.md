@@ -723,3 +723,82 @@ E
     );
   });
 ```
+
+## Criação de agendamento
+Em `CreateAppointmentsService`, ainda temos que refatorar, pois permitimos que o usuário crie agendamentos consigo mesmo, em datas passadas, e não estamos coletando o usuário que está fazendo o agendamento. E para adicionar isso, precisaremos criar outra migration.
+```bash
+yarn typeorm migration:create -n AddUserIdToAppointments
+```
+
+```ts
+import {
+  MigrationInterface,
+  QueryRunner,
+  TableColumn,
+  TableForeignKey,
+} from 'typeorm';
+
+export default class AddUserIdToAppointments1594520015227
+  implements MigrationInterface {
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.addColumn(
+      'appointments',
+      new TableColumn({
+        name: 'user_id',
+        type: 'uuid',
+        isNullable: true,
+      }),
+    );
+
+    await queryRunner.createForeignKey(
+      'appointments',
+      new TableForeignKey({
+        name: 'AppointmentUser',
+        columnNames: ['user_id'],
+        referencedColumnNames: ['id'],
+        referencedTableName: 'users',
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE',
+      }),
+    );
+  }
+
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.dropForeignKey('appointments', 'AppointmentUser');
+    await queryRunner.dropColumn('appointments', 'user_id');
+  }
+}
+```
+
+E rodamos a migration
+```bash
+yarn typeorm migration:run
+```
+
+E vamos adicionar nas entities essa coluna a mais
+```ts
+@Entity('appointments')
+class Appointment {
+  //...
+  @Column()
+  user_id: string;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'user_id' })
+  user: User;
+```
+
+E temos que adicionar no `dto`
+```ts
+export default interface ICreateAppointmentDTO {
+  provider_id: string;
+  user_id: string;
+  date: Date;
+}
+```
+
+E adicionamos também nos nossos fake, no repository do typeorm e no service dos appointments que agora teremos `user_id` no método `create`. No controller, vamos pegar o `user_id` de dentro da autenticação.
+
+Vamos para o Insomnia para testar e rodamos a aplicação. Fazemos a autenticação numa session com um usuário, e o appointment com o id de outro usuário.
+
+Rodamos os testes e corrigimos onde está faltando importar `user_id`
