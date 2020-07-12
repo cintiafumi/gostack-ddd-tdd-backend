@@ -389,3 +389,126 @@ describe('CreateAppointment', () => {
 ```
 
 Rodamos os testes e verificamos se está tudo passando.
+
+# Personalizando para produção
+## Validando dados
+Vamos fazer as validações dos campos na hora do PUT e POST das nossas rotas. Vamos instalar o pacote `celebrate`
+```bash
+yarn add celebrate
+```
+
+Vamos validar a rota de criação de appointments. Também precisaremos importar os types do joi
+```bash
+yarn add -D @type/hapi__joi
+```
+
+```ts
+appointmentsRouter.post(
+  '/',
+  celebrate({
+    [Segments.BODY]: {
+      provider_id: Joi.string().uuid().required(),
+      date: Joi.date(),
+    },
+  }),
+  appointmentsController.create,
+);
+```
+
+E podemos testar no Insomnia. Para tratar o erro, vamos até nosso `server.ts` e vamos importar de dentro do `celebrate` os `errors` para colocar antes do nosso global exception.
+```ts
+import { errors } from 'celebrate';
+//...
+app.use(errors());
+```
+
+Testamos de novo para ver o erro.
+
+Agora vamos para outras rotas. Faremos a validação do `provider_id` que tem que estar nos `params`.
+```ts
+providersRouter.get(
+  '/:provider_id/month-availability',
+  celebrate({
+    [Segments.PARAMS]: {
+      provider_id: Joi.string().uuid().required(),
+    },
+  }),
+  providerMonthAvailabilityController.index,
+);
+providersRouter.get(
+  '/:provider_id/day-availability',
+  celebrate({
+    [Segments.PARAMS]: {
+      provider_id: Joi.string().uuid().required(),
+    },
+  }),
+  providerDayAvailabilityController.index,
+);
+```
+
+Nas rotas de reset de senha
+```ts
+passwordRouter.post(
+  '/forgot',
+  celebrate({
+    [Segments.BODY]: {
+      email: Joi.string().email().required(),
+    },
+  }),
+  forgotPasswordController.create,
+);
+passwordRouter.post(
+  '/reset',
+  celebrate({
+    [Segments.BODY]: {
+      token: Joi.string().uuid().required(),
+      password: Joi.string().required(),
+      password_confirmation: Joi.string().required().valid(Joi.ref('password')),
+    },
+  }),
+  resetPasswordController.create,
+);
+```
+
+```ts
+profileRouter.put(
+  '/',
+  celebrate({
+    [Segments.BODY]: {
+      name: Joi.string().required(),
+      email: Joi.string().email().required(),
+      old_password: Joi.string(),
+      password: Joi.string(),
+      password_confirmation: Joi.string().valid(Joi.ref('password')),
+    },
+  }),
+  profileController.update,
+);
+```
+
+```ts
+sessionsRouter.post(
+  '/',
+  celebrate({
+    [Segments.BODY]: {
+      email: Joi.string().email().required(),
+      password: Joi.string().required(),
+    },
+  }),
+  sessionsController.create,
+);
+```
+
+```ts
+usersRouter.post(
+  '/',
+  celebrate({
+    [Segments.BODY]: {
+      name: Joi.string().required(),
+      email: Joi.string().email().required(),
+      password: Joi.string().required(),
+    },
+  }),
+  usersController.create,
+);
+```
