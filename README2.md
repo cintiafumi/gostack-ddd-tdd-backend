@@ -887,3 +887,67 @@ E alteramos o service.
 ```
 
 Rodamos um teste global. (Tem um if que não está sendo coberto 🤔).
+
+## Rotas e controllers
+```ts
+export default class ProviderMonthAvailabilityController {
+  public async index(request: Request, response: Response): Promise<Response> {
+    const { provider_id } = request.params;
+    const { year, month } = request.body;
+
+    const listProviderMonthAvailability = container.resolve(
+      ListProviderMonthAvailabilityService,
+    );
+
+    const availability = await listProviderMonthAvailability.execute({
+      provider_id,
+      year,
+      month,
+    });
+
+    return response.json(availability);
+  }
+}
+```
+E
+```ts
+export default class ProviderDayAvailabilityController {
+  public async index(request: Request, response: Response): Promise<Response> {
+    const { provider_id } = request.params;
+    const { year, month, day } = request.body;
+
+    const listProviderDayAvailability = container.resolve(
+      ListProviderDayAvailabilityService,
+    );
+
+    const availability = await listProviderDayAvailability.execute({
+      provider_id,
+      year,
+      month,
+      day,
+    });
+
+    return response.json(availability);
+  }
+}
+```
+
+Agora as rotas de providers
+```ts
+import ProviderMonthAvailabilityController from '../controllers/ProviderMonthAvailabilityController';
+import ProviderDayAvailabilityController from '../controllers/ProviderDayAvailabilityController';
+//...
+const providerMonthAvailabilityController = new ProviderMonthAvailabilityController();
+const providerDayAvailabilityController = new ProviderDayAvailabilityController();
+//...
+providersRouter.get(
+  '/:provider_id/month-availability',
+  providerMonthAvailabilityController.index,
+);
+providersRouter.get(
+  '/:provider_id/day-availability',
+  providerDayAvailabilityController.index,
+);
+```
+
+Testamos no Insomnia e está tudo ok.
