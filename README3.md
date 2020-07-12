@@ -512,3 +512,45 @@ usersRouter.post(
   usersController.create,
 );
 ```
+
+## Variáveis ambiente
+Criamos o arquivo `.env` na raiz do projeto e colocamos informações que não podem ficar disponíveis por aí ou que tenham diferença quando for ambiente de desenvolvimento e ambiente de produção.
+```
+APP_SECRET=
+```
+E também deixamos no `.gitignore` para não subirmos esse arquivo para o repositório público.
+
+Vamos instalar o pacote `dotenv`
+```bash
+yarn add dotenv
+```
+Importamos lá no nosso `server.ts`
+```ts
+import 'dotenv/config';
+```
+E para isso, precisamos importar um arquivo `js`, por isso, precisamos adicionar no nosso `tsconfig` mais uma informação
+```json
+    "allowJs": true,
+```
+E voltando no nosso `config/auth`, conseguimos acessar a variável de ambiente
+```ts
+export default {
+  jwt: {
+    secret: process.env.APP_SECRET,
+    expiresIn: '1d',
+  },
+};
+```
+
+Outro dado que podemos colocar é a url do nosso frontend que usamos no service `SendForgotPasswordEmailService`
+```
+APP_WEB_URL=http://localhost:3000
+```
+
+Para que outros possam saber quais variáveis estão no nosso `.env`, criamos um `.env.example` que vai subir para o github e removemos todos os dados sensíveis dele.
+
+O arquivo `ormconfig.json` também é bom a gente deixar no `.gitignore`. Como já subimos no github, temos que remover ele do cache
+```bash
+git rm --cached ormconfig.json
+```
+Fazemos isso pois o banco de dados no ambiente de desenvolvimento e de produção serão bem diferentes.
