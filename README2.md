@@ -465,3 +465,204 @@ E a lógica fica então em `ListProviderMonthAvailabilityService`
     return availability;
   }
 ```
+
+
+## Listando horários disponíveis
+Agora, vamos verificar os horários disponíveis para um dado dia. Criamos o service `ListProviderDayAvailability` e copiamos a estrutura do service de mês.
+```ts
+import { injectable, inject } from 'tsyringe';
+
+import IAppointmentsRepository from '../repositories/IAppointmentsRepository';
+
+interface IRequest {
+  provider_id: string;
+  month: number;
+  year: number;
+  day: number;
+}
+
+type IResponse = Array<{
+  hour: number;
+  available: boolean;
+}>;
+
+@injectable()
+class ListProviderDayAvailabilityService {
+  constructor(
+    @inject('AppointmentsRepository')
+    private appointmentsRepository: IAppointmentsRepository,
+  ) {}
+
+  public async execute({
+    provider_id,
+    year,
+    month,
+    day,
+  }: IRequest): Promise<IResponse> {
+    return [{ hour: 8, available: true }];
+  }
+}
+
+export default ListProviderDayAvailabilityService;
+```
+
+Vamos ter que criar um método novo no nosso repository e seu `dto`.
+```ts
+export default interface IFindAllInDayFromProviderDTO {
+  provider_id: string;
+  year: number;
+  month: number;
+  day: number;
+}
+```
+
+E no nosso repository
+```ts
+export default interface IAppointmentsRepository {
+//...
+  findAllInDayFromProvider(
+    data: IFindAllInDayFromProviderDTO,
+  ): Promise<Appointment[]>;
+}
+```
+
+No nosso repository fake
+```ts
+class FakeAppointmentsRepository implements IAppointmentsRepository {
+  //...
+  public async findAllInDayFromProvider({
+    provider_id,
+    day,
+    month,
+    year,
+  }: IFindAllInDayFromProviderDTO): Promise<Appointment[]> {
+    const appointments = this.appointments.filter(
+      appointment =>
+        appointment.provider_id === provider_id &&
+        getDate(appointment.date) === day &&
+        getMonth(appointment.date) + 1 === month &&
+        getYear(appointment.date) === year,
+    );
+    return appointments;
+  }
+```
+
+E no repository real
+```ts
+class AppointmentsRepository implements IAppointmentsRepository {
+  //...
+  public async findAllInDayFromProvider({
+    provider_id,
+    day,
+    month,
+    year,
+  }: IFindAllInDayFromProviderDTO): Promise<Appointment[]> {
+    const parsedDay = String(day).padStart(2, '0');
+    const parsedMonth = String(month).padStart(2, '0');
+
+    const appointments = await this.ormRepository.find({
+      where: {
+        provider_id,
+        date: Raw(
+          dateFieldName =>
+            `to_char(${dateFieldName}, 'DD-MM-YYYY') = '${parsedDay}-${parsedMonth}-${year}'`,
+        ),
+      },
+    });
+    return appointments;
+  }
+```
+
+Vamos criar o teste
+```ts
+import FakeAppointmentsRepository from '@modules/appointments/repositories/fake/FakeAppointmentsRepository';
+import ListProviderDayAvailabilityService from './ListProviderDayAvailabilityService';
+
+let fakeAppointmentsRepository: FakeAppointmentsRepository;
+let listProviderDayAvailability: ListProviderDayAvailabilityService;
+
+describe('ListProviderDayAvailability', () => {
+  beforeEach(() => {
+    fakeAppointmentsRepository = new FakeAppointmentsRepository();
+    listProviderDayAvailability = new ListProviderDayAvailabilityService(
+      fakeAppointmentsRepository,
+    );
+  });
+
+  it('should be able to list the day availability from provider', async () => {
+    await fakeAppointmentsRepository.create({
+      provider_id: 'user',
+      date: new Date(2020, 3, 20, 8, 0, 0),
+    });
+
+    await fakeAppointmentsRepository.create({
+      provider_id: 'user',
+      date: new Date(2020, 3, 20, 10, 0, 0),
+    });
+
+    const availability = await listProviderDayAvailability.execute({
+      provider_id: 'user',
+      year: 2020,
+      month: 5,
+      day: 20,
+    });
+
+    expect(availability).toEqual(
+      expect.arrayContaining([
+        { hour: 8, available: false },
+        { hour: 9, available: true },
+        { hour: 10, available: false },
+        { hour: 11, available: true },
+      ]),
+    );
+  });
+});
+```
+
+E vamos arrumar o service
+```ts
+class ListProviderDayAvailabilityService {
+  constructor(
+    @inject('AppointmentsRepository')
+    private appointmentsRepository: IAppointmentsRepository,
+  ) {}
+
+  public async execute({
+    provider_id,
+    year,
+    month,
+    day,
+  }: IRequest): Promise<IResponse> {
+    const appointments = await this.appointmentsRepository.findAllInDayFromProvider(
+      {
+        provider_id,
+        year,
+        month,
+        day,
+      },
+    );
+
+    const startHour = 8;
+
+    const eachHourArray = Array.from(
+      { length: 10 },
+      (_, index) => index + startHour,
+    );
+
+    const availability = eachHourArray.map(hour => {
+      const hasAppointmentAtHour = appointments.find(
+        appointment => getHours(appointment.date) === hour,
+      );
+
+      return {
+        hour,
+        available: !hasAppointmentAtHour,
+      };
+    });
+
+    return availability;
+  }
+}
+```
+
+Testamos e está tudo certo.
