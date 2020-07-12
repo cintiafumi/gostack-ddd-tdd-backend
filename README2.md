@@ -802,3 +802,88 @@ E adicionamos também nos nossos fake, no repository do typeorm e no service dos
 Vamos para o Insomnia para testar e rodamos a aplicação. Fazemos a autenticação numa session com um usuário, e o appointment com o id de outro usuário.
 
 Rodamos os testes e corrigimos onde está faltando importar `user_id`
+
+## Regras de agendamento
+Vamos criar um teste que não permite criar agendamentos em datas passadas.
+```ts
+  it('should not be able to create an appointment on a past date', async () => {
+    jest.spyOn(Date, 'now').mockImplementationOnce(() => {
+      return new Date(2020, 4, 10, 12).getTime();
+    });
+
+    await expect(
+      createAppointment.execute({
+        date: new Date(2020, 4, 10, 11),
+        user_id: '123123',
+        provider_id: '123123',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+```
+O teste falhou, pois ele criou o agendamento e não deu nenhum erro. Vamos modificar o código do service então. Preciso comparar a data do agendamento com a data atual.
+```ts
+    if (isBefore(appointmentDate, Date.now())) {
+      throw new AppError('You cannot create an appointment on a past date.');
+    }
+```
+Mas agora, ao testar obtivemos falha nos testes anteriores. Então, temos que alterar os outros testes para que pegue a data posterior à data atual.
+
+Vamos criar o teste de que o `user_id` não possa fazer um agendamento consigo mesmo.
+```ts
+  it('should not be able to create an appointment when the provider and the user are the same', async () => {
+    jest.spyOn(Date, 'now').mockImplementationOnce(() => {
+      return new Date(2020, 4, 10, 12).getTime();
+    });
+
+    await expect(
+      createAppointment.execute({
+        date: new Date(2020, 4, 10, 13),
+        user_id: '123123',
+        provider_id: '123123',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+```
+
+E vamos criar outro `if` para garantir que provider e user não sejam a mesma pessoa.
+```ts
+    if (user_id === provider_id) {
+      throw new AppError('You cannot create an appointment with yourself');
+    }
+```
+
+Também precisamos garantir que os agendamentos sejam somente das 8h às 18h.
+```ts
+  it('should not be able to create an appointment before or after working hours', async () => {
+    jest.spyOn(Date, 'now').mockImplementationOnce(() => {
+      return new Date(2020, 4, 10, 12).getTime();
+    });
+
+    await expect(
+      createAppointment.execute({
+        date: new Date(2020, 4, 11, 7),
+        user_id: 'user-id',
+        provider_id: 'provider-id',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+
+    await expect(
+      createAppointment.execute({
+        date: new Date(2020, 4, 10, 18),
+        user_id: 'user-id',
+        provider_id: 'provider-id',
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+  });
+```
+
+E alteramos o service.
+```ts
+    if (getHours(appointmentDate) < 8 || getHours(appointmentDate) > 17) {
+      throw new AppError(
+        'You can only create appointments between 8AM and 5PM',
+      );
+    }
+```
+
+Rodamos um teste global. (Tem um if que não está sendo coberto 🤔).
