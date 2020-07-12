@@ -292,3 +292,43 @@ class NotificationsRepository implements INotificationsRepository {
 
 export default NotificationsRepository;
 ```
+
+## Enviando notificações
+Para começarmos a enviar as notificações, vamos registrar no container da aplicação as `Notifications`
+```ts
+//...
+import INotificationsRepository from '@modules/notifications/repositories/INotificationsRepository';
+import NotificationsRepository from '@modules/notifications/infra/typeorm/repositories/NotificationsRepository';
+//...
+container.registerSingleton<INotificationsRepository>(
+  'NotificationsRepository',
+  NotificationsRepository,
+);
+```
+
+Precisaremos enviar a notificação quando o usuário criar um novo appointment. Então, precisamos injetar o `INotificationRepository` dentro de `CreateAppointmentService`
+```ts
+class CreateAppointmentService {
+  constructor(
+    @inject('AppointmentsRepository')
+    private appointmentsRepository: IAppointmentsRepository,
+
+    @inject('NotificationsRepository')
+    private notificationsRepository: INotificationsRepository,
+  ) {}
+
+  public async execute({
+    date,
+    provider_id,
+    user_id,
+  }: IRequest): Promise<Appointment> {
+    //...
+    const formattedDate = format(date, "dd/MM/yyyy 'às' HH:mm'h'");
+
+    await this.notificationsRepository.create({
+      recipient_id: provider_id,
+      content: `Novo agendamento para dia ${formattedDate}`,
+    });
+```
+
+E vamos testar criando um appointment pelo Insomia e verificamos no MongoDB Compass se apareceu a notificação.
