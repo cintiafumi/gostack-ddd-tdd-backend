@@ -733,3 +733,70 @@ E dentro da AWS,
 - copio a `access key id` e `secret access key`
 
 (Não testei a aplicação, mas teria que enviar o email pelo Insomnia e cair no meu email real)
+
+## Organizando o container
+Criamos um `index.ts` dentro de `container/providers/MailProvider` para que não fique esse monte de `if` dentro do código para ver qual variável de ambiente que estamos.
+```ts
+import { container } from 'tsyringe';
+import mailConfig from '@config/mail';
+
+import IMailProvider from './models/IMailProvider';
+
+import EtherealMailProvider from './implementations/EtherealMailProvider';
+import SESMailProvider from './implementations/SESMailProvider';
+
+const providers = {
+  ethereal: container.resolve(EtherealMailProvider),
+  ses: container.resolve(SESMailProvider),
+};
+
+container.registerInstance<IMailProvider>(
+  'MailProvider',
+  providers[mailConfig.driver],
+);
+```
+
+Também isolamos o container do `MailTemplateProvider/index.ts`
+```ts
+import { container } from 'tsyringe';
+
+import IMailTemplateProvider from './models/IMailTemplateProvider';
+
+import HandlebarsMailTemplateProvider from './implementations/HandlebarsMailTemplateProvider';
+
+const providers = {
+  handlebars: HandlebarsMailTemplateProvider,
+};
+
+container.registerSingleton<IMailTemplateProvider>(
+  'MailTemplateProvider',
+  providers.handlebars,
+);
+```
+
+E do `StorageProvider`
+```ts
+import { container } from 'tsyringe';
+
+import IStorageProvider from './models/IStorageProvider';
+
+import DiskStorageProvider from './implementations/DiskStorageProvider';
+
+const providers = {
+  disk: DiskStorageProvider,
+};
+
+container.registerSingleton<IStorageProvider>(
+  'StorageProvider',
+  providers.disk,
+);
+```
+
+Por fim, só importamos todos eles no `providers/index.ts`
+```ts
+import './StorageProvider';
+import './MailTemplateProvider';
+import './MailProvider';
+```
+
+Rodamos a aplicação para conferir se está funcionando.
