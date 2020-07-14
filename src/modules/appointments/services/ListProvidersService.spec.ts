@@ -23,14 +23,14 @@ describe('ListProviders', () => {
       password: '123456',
     });
 
-    const loogedUser = await fakeUsersRepository.create({
+    const loggedUser = await fakeUsersRepository.create({
       name: 'John Qua',
       email: 'johnqua@example.com',
       password: '123456',
     });
 
     const providers = await listProviders.execute({
-      user_id: loogedUser.id,
+      user_id: loggedUser.id,
     });
 
     expect(providers).toEqual([user1, user2]);

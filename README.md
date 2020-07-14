@@ -2683,7 +2683,7 @@ import { container } from 'tsyringe';
 
 import UpdateProfileService from '@modules/users/services/UpdateProfileService';
 
-export default class ProfileControler {
+export default class ProfileController {
   public async show(request: Request, response: Response): Promise<Response> {
     // exibicao do perfil
   }
@@ -2765,7 +2765,7 @@ export default ShowProfileService;
 ```
 Agora conseguimos importar o `ShowProfileService` no `ProfileController`
 ```ts
-export default class ProfileControler {
+export default class ProfileController {
   public async show(request: Request, response: Response): Promise<Response> {
     const user_id = request.user.id;
     const showProfile = container.resolve(ShowProfileService);

@@ -585,7 +585,7 @@ E vamos adicionar essa informação dentro do nosso `SessionsController` para qu
 ```ts
 import { classToClass } from 'class-transformer';
 //...
-export default class SessionsControler {
+export default class SessionsController {
   public async create(request: Request, response: Response): Promise<Response> {
     //...
     return response.json({ user: classToClass(user), token });
@@ -597,3 +597,139 @@ E fazemos isso em todos os controllers que retornar o `user`. Removendo sempre e
 // delete user.password;
 return response.json(classToClass(user));
 ```
+
+## Emails pelo Amazon SES
+Vamos configurar algumas coisas do ambiente de produção da nossa aplicação. Para envio de e-mail em produção, temos: Spark Post, Mailgun, Mailchimp, e vamos usar o AmazonSES. Precisamos ter um domínio próprio.
+
+Vamos entrar no console da Amazon e precisamos configurar o DNS e uma conta de email desse domínio (pode ser criado no Zoho, por exemplo) que temos lá no serviço SES da Amazon. Vamos usar o SMTP, mas esse tipo de serviço de envio de e-mail não é aconselhado para envio de batch de email. Porque ele sobe um servidor, envia o email e depois fecha o servidor.
+
+Criamos o arquivo `mail.ts` dentro da pasta `config`
+```ts
+interface IMailConfig {
+  driver: 'ethereal' | 'ses';
+}
+
+export default {
+  driver: process.env.MAIL_DRIVER || 'ethereal',
+} as IMailConfig;
+```
+
+Criamos nosso `SESMailProvider` bem simples e com a estrutura muito similar ao do `EtherealMailProvider` somente para testar.
+```ts
+import { injectable, inject } from 'tsyringe';
+import nodemailer, { Transporter } from 'nodemailer';
+
+import IMailTemplateProvider from '@shared/container/providers/MailTemplateProvider/models/IMailTemplateProvider';
+import IMailProvider from '../models/IMailProvider';
+import ISendMailDTO from '../dto/ISendMailDTO';
+
+@injectable()
+export default class SESMailProvider implements IMailProvider {
+  private client: Transporter;
+
+  constructor(
+    @inject('MailTemplateProvider')
+    private mailTemplateProvider: IMailTemplateProvider,
+  ) {}
+
+  public async sendMail({
+    to,
+    from,
+    subject,
+    templateData,
+  }: ISendMailDTO): Promise<void> {
+    console.log('Funcionou');
+  }
+}
+```
+
+Adicionamos a variável `MAIL_DRIVER=ses` em `.env`
+
+Rodamos a aplicação e enviamos um email pelo Insomnia só para vermos o `console.log('Funcionou')`.
+
+Podemos usar o Nodemailer com o SES, então, olhando a [documentação](https://nodemailer.com/transports/ses/), precisamos instalar o `aws-sdk`
+
+Adicionamos nosso nome e email em `mailConfig`
+```ts
+interface IMailConfig {
+  driver: 'ethereal' | 'ses';
+  defaults: {
+    from: {
+      email: string;
+      name: string;
+    };
+  };
+}
+
+export default {
+  driver: process.env.MAIL_DRIVER || 'ethereal',
+
+  defaults: {
+    from: {
+      email: 'cintiafumi@gmail.com',
+      name: 'Cintia Fumi da CintiaFumi',
+    },
+  },
+} as IMailConfig;
+```
+
+E no nosso provider, adicionamos essa parte de configuração do nosso email.
+```ts
+//...
+import aws from 'aws-sdk';
+import mailConfig from '@config/mail';
+//...
+export default class SESMailProvider implements IMailProvider {
+  private client: Transporter;
+
+  constructor(
+    @inject('MailTemplateProvider')
+    private mailTemplateProvider: IMailTemplateProvider,
+  ) {}
+
+  public async sendMail({
+    to,
+    from,
+    subject,
+    templateData,
+  }: ISendMailDTO): Promise<void> {
+    const { email, name } = mailConfig.defaults.from;
+
+    this.client = nodemailer.createTransport({
+      SES: new aws.SES({
+        apiVersion: '2010-12-01',
+        region: 'us-east-1',
+      }),
+    });
+
+    await this.client.sendMail({
+      from: {
+        name: from?.name || name,
+        address: from?.email || email,
+      },
+      to: {
+        name: to.name,
+        address: to.email,
+      },
+      subject,
+      html: await this.mailTemplateProvider.parse(templateData),
+    });
+  }
+```
+
+No `.env`, precisamos colocar nossas credential keys da AWS
+```
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+```
+
+E dentro da AWS,
+- vamos no IAM,
+- adicionamos um `User` com `access type` sendo `Programmatic access`
+- `Attach existing policies directly`
+- filtrar `policies` por `ses`
+- escolhemos `AmazonSESFullAccess`
+- clica `Next tags`, `Next review` e `Create user`
+- copio a `access key id` e `secret access key`
+
+(Não testei a aplicação, mas teria que enviar o email pelo Insomnia e cair no meu email real)

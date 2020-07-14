@@ -34,10 +34,10 @@ class ListProviderMonthAvailabilityService {
       },
     );
 
-    const numberofDaysInMonth = getDaysInMonth(new Date(year, month - 1));
+    const numberOfDaysInMonth = getDaysInMonth(new Date(year, month - 1));
 
     const eachDayArray = Array.from(
-      { length: numberofDaysInMonth },
+      { length: numberOfDaysInMonth },
       (_, index) => index + 1,
     );
 

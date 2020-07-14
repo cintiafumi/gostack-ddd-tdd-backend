@@ -157,14 +157,14 @@ describe('ListProviders', () => {
       password: '123456',
     });
 
-    const loogedUser = await fakeUsersRepository.create({
+    const loggedUser = await fakeUsersRepository.create({
       name: 'John Qua',
       email: 'johnqua@example.com',
       password: '123456',
     });
 
     const providers = await listProviders.execute({
-      user_id: loogedUser.id,
+      user_id: loggedUser.id,
     });
 
     expect(providers).toEqual([user1, user2]);
@@ -445,10 +445,10 @@ it('should be able to list the month availability from provider', async () => {
 E a lógica fica então em `ListProviderMonthAvailabilityService`
 ```ts
 //...
-    const numberofDaysInMonth = getDaysInMonth(new Date(year, month - 1));
+    const numberOfDaysInMonth = getDaysInMonth(new Date(year, month - 1));
 
     const eachDayArray = Array.from(
-      { length: numberofDaysInMonth },
+      { length: numberOfDaysInMonth },
       (_, index) => index + 1,
     );
 
