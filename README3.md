@@ -1039,3 +1039,178 @@ export default class User {
 ```
 
 Testamos e vemos se o link fornecido abre a imagem no navegador. Depois de dar certo, temos que alterar de volta o `.env` para `disk` enquanto estivermos desenvolvendo.
+
+# Cache e segurança
+## Configurando cache
+Cache é para garantir a escalabilidade seja para armazenar uma query que é feita muitas vezes. Utilizaremos o Redis, que é como se fosse uma grande tabela com apenas chave e valor. Vamos rodar o Redis no Docker.
+```bash
+docker run --name redis -p 6379:6379 -d -t redis:alpine
+```
+De qualquer forma, deixamos os 3 dockers rodando
+```bash
+docker start gostack_postgres
+
+docker start mongodb
+
+docker start redis
+```
+
+Usaremos o `ioredis` que podemos usar `async/await`
+```bash
+yarn add ioredis
+yarn add -D @types/ioredis
+```
+
+Como poderá ser utilizado em qualquer parte da aplicação, vamos colocar dentro da pasta de `providers`.
+```
+  src
+    shared
+      container
+        providers
+          CacheProvider
+            fakes
+            implementations
+            models
+```
+
+Em `models/ICacheProvider`
+```ts
+export default interface ICacheProvider {
+  save(key: string, value: string): Promise<void>;
+  recover(key: string): Promise<string>;
+  invalidate(key: string): Promise<void>;
+}
+```
+
+Em `implementations/RedisCacheProvider`
+```ts
+import Redis, { Redis as RedisClient } from 'ioredis';
+import ICacheProvider from '../models/ICacheProvider';
+
+export default class RedisCacheProvider implements ICacheProvider {
+  private client: RedisClient;
+
+  constructor() {
+    this.client = new Redis();
+  }
+
+  async save(key: string, value: string): Promise<void> {}
+
+  async recover(key: string): Promise<string> {}
+
+  async invalidate(key: string): Promise<void> {}
+}
+```
+
+Em `CacheProvider/index`
+```ts
+import { container } from 'tsyringe';
+
+import ICacheProvider from './models/ICacheProvider';
+
+import RedisCacheProvider from './implementations/RedisCacheProvider';
+
+const providers = {
+  redis: RedisCacheProvider,
+};
+
+container.registerSingleton<ICacheProvider>('CacheProvider', providers.redis);
+```
+
+E em `providers/index` adicionar
+```ts
+//...
+import './CacheProvider';
+```
+
+Localmente, não precisamos de usuário e senha para usar o Redis, mas em produção precisaremos. Então, vamos fazer as configurações do Redis num arquivo `config/cache`
+```ts
+import { RedisOptions } from 'ioredis';
+
+interface ICacheConfig {
+  driver: 'redis';
+
+  config: {
+    redis: RedisOptions;
+  };
+}
+
+export default {
+  driver: 'redis',
+
+  config: {
+    redis: {
+      host: 'localhost',
+      port: 6379,
+      password: undefined,
+    },
+  },
+} as ICacheConfig;
+```
+
+Vamos importar esse config dentro do nosso implementation
+```ts
+import Redis, { Redis as RedisClient } from 'ioredis';
+import cacheConfig from '@config/cache';
+import ICacheProvider from '../models/ICacheProvider';
+
+export default class RedisCacheProvider implements ICacheProvider {
+  private client: RedisClient;
+
+  constructor() {
+    this.client = new Redis(cacheConfig.config.redis);
+  }
+
+  public async save(key: string, value: string): Promise<void> {
+    await this.client.set(key, value);
+  }
+
+  public async recover(key: string): Promise<string | null> {
+    const data = await this.client.get(key);
+
+    return data;
+  }
+
+  public async invalidate(key: string): Promise<void> {}
+}
+```
+
+Testamos de maneira simples no `ListProviderAppointmentsService`
+```ts
+import ICacheProvider from '@shared/container/providers/CacheProvider/models/ICacheProvider';
+//...
+
+@injectable()
+class ListProviderAppointmentsService {
+  constructor(
+    @inject('AppointmentsRepository')
+    private appointmentsRepository: IAppointmentsRepository,
+
+    @inject('CacheProvider')
+    private cacheProvider: ICacheProvider,
+  ) {}
+
+  public async execute({
+    provider_id,
+    year,
+    month,
+    day,
+  }: IRequest): Promise<Appointment[]> {
+    const cacheData = this.cacheProvider.recover('asd2');
+
+    console.log(cacheData);
+
+    const appointments = await this.appointmentsRepository.findAllInDayFromProvider(
+      {
+        provider_id,
+        year,
+        month,
+        day,
+      },
+    );
+
+    // await this.cacheProvider.save('asd2', 'asd');
+
+    return appointments;
+  }
+```
