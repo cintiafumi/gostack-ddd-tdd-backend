@@ -800,3 +800,242 @@ import './MailProvider';
 ```
 
 Rodamos a aplicação para conferir se está funcionando.
+
+## Upload de arquivos para Amazon S3
+Iremos usar somente em ambiente de produção o Amazon S3 que é um CDN, Content Delivery Network. Vamos usar o CDN, pois os servidores hoje em dia são muito otimizados e com pouco espaço em disco. A maioria dos servidores usa SSD (Solid State Driver) que é muito mais rápido, e com pouco espaço, ficando inviável salvar arquivos, imagens.
+
+Ao usarmos o Node, isso facilita escalar a aplicação horizontalmente. Numa escala vertical, quando precisamos aumentar os recursos quando a aplicação fica lenta, então, aumentamos memória, processamento. Na escala horizontal, criamos um novo servidor e executamos nossa aplicação em 2 servidores diferentes, distribuindo a carga.
+
+Vamos logar no Console da AWS. Vamos em IAM e criamos um usuário e adicionamos um full access de S3. (Não é a melhor permissão para nosso caso, pois permite fazer tudo em todos os buckets, mas deixaremos assim por enquanto). Pegar a access key e a secret key e colocar no `.env`. Podemos usar o mesmo user criado anteriormente.
+
+No Bucket, criamos um bucket `app-gobarber` e remove o check `Block all public access` e seleciona a region como `us-east-1` porque é mais barato.
+
+Vamos criar nosso `S3StorageProvider`
+```ts
+import fs from 'fs';
+import path from 'path';
+import aws, { S3 } from 'aws-sdk';
+import uploadConfig from '@config/upload';
+import IStorageProvider from '../models/IStorageProvider';
+
+class S3StorageProvider implements IStorageProvider {
+  private client: S3;
+
+  constructor() {
+    this.client = new aws.S3({
+      region: 'us-east-1',
+    });
+  }
+
+  public async saveFile(file: string): Promise<string> {
+    const originalPath = path.resolve(uploadConfig.tmpFolder, file);
+
+    const fileContent = await fs.promises.readFile(originalPath);
+
+    await this.client
+      .putObject({
+        Bucket: 'app-gobarber', // bucket name
+        Key: file, // file name
+        ACL: 'public-read', // which permissions are allowed
+        Body: fileContent, // file content
+      })
+      .promise();
+
+    return file;
+  }
+  //...
+}
+```
+
+Para testarmos, vamos trocar o `DiskStorageProvider` por `S3StorageProvider` dentro do `StorageProvider/index.ts`
+```ts
+import DiskStorageProvider from './implementations/DiskStorageProvider';
+import S3StorageProvider from './implementations/S3StorageProvider';
+
+const providers = {
+  disk: DiskStorageProvider,
+  s3: S3StorageProvider,
+};
+
+container.registerSingleton<IStorageProvider>('StorageProvider', providers.s3); // somente para teste
+```
+
+Rodamos a aplicação e fazemos alteração de avatar pelo Insomnia. Devemos ver nossa imagem dentro do Bucket.
+
+Adicionamos no `.env` a variável `STORAGE_DRIVER` que será `s3` ou `disk`.
+
+Alteramos nosso `config/upload.ts`
+```ts
+import path from 'path';
+import crypto from 'crypto';
+import multer, { StorageEngine } from 'multer';
+
+const tmpFolder = path.resolve(__dirname, '..', '..', 'tmp');
+
+interface IUploadConfig {
+  driver: 's3' | 'disk';
+
+  tmpFolder: string;
+  uploadFolder: string;
+
+  multer: {
+    storage: StorageEngine;
+  };
+  config: {
+    disk: {};
+  };
+}
+
+export default {
+  driver: process.env.STORAGE_DRIVER,
+
+  tmpFolder,
+  uploadFolder: path.resolve(tmpFolder, 'uploads'),
+  multer: {
+    storage: multer.diskStorage({
+      destination: tmpFolder,
+      filename(request, file, callback) {
+        const fileHash = crypto.randomBytes(10).toString('hex');
+        const filename = `${fileHash}-${file.originalname}`;
+
+        return callback(null, filename);
+      },
+    }),
+  },
+  config: {
+    disk: {},
+  },
+} as IUploadConfig;
+```
+
+E agora podemos melhorar nosso `index`
+```ts
+import { container } from 'tsyringe';
+import uploadConfig from '@config/upload';
+
+import IStorageProvider from './models/IStorageProvider';
+
+import DiskStorageProvider from './implementations/DiskStorageProvider';
+import S3StorageProvider from './implementations/S3StorageProvider';
+
+const providers = {
+  disk: DiskStorageProvider,
+  s3: S3StorageProvider,
+};
+
+container.registerSingleton<IStorageProvider>(
+  'StorageProvider',
+  providers[uploadConfig.driver],
+);
+```
+
+Como alteramos o `config/uploads`, precisamos arrumas no `users.routes` também
+```ts
+const upload = multer(uploadConfig.multer);
+```
+
+Voltamos novamente em `S3StorageProvider` para alterar o método de `deleteFile`. Para também conseguirmos visualizer a imagem por uma url, adicionamos a biblioteca `mime`
+```bash
+yarn add mime
+```
+
+```ts
+import mime from 'mime';
+//...
+class S3StorageProvider implements IStorageProvider {
+  private client: S3;
+
+  constructor() {
+    this.client = new aws.S3({
+      region: 'us-east-1',
+    });
+  }
+
+  public async saveFile(file: string): Promise<string> {
+    const originalPath = path.resolve(uploadConfig.tmpFolder, file);
+
+    const ContentType = mime.getType(originalPath);
+
+    if (!ContentType) {
+      throw new Error('File not found.');
+    }
+
+    const fileContent = await fs.promises.readFile(originalPath);
+
+    await this.client
+      .putObject({
+        Bucket: 'app-gobarber', // bucket name
+        Key: file, // file name
+        ACL: 'public-read', // which permissions are allowed
+        Body: fileContent, // file content
+        ContentType,
+        ContentDisposition: `inline; filename=${file}`,
+      })
+      .promise();
+
+    await fs.promises.unlink(originalPath);
+
+    return file;
+  }
+
+  public async deleteFile(file: string): Promise<void> {
+    await this.client
+      .deleteObject({
+        Bucket: 'app-gobarber',
+        Key: file,
+      })
+      .promise();
+  }
+}
+```
+
+Adiciono no `config/uploads` o nome do bucket e alteramos novamente no `S3StorageProvider`
+```ts
+export default {
+  driver: process.env.STORAGE_DRIVER,
+
+  tmpFolder,
+  uploadFolder: path.resolve(tmpFolder, 'uploads'),
+  multer: {
+    storage: multer.diskStorage({
+      destination: tmpFolder,
+      filename(request, file, callback) {
+        const fileHash = crypto.randomBytes(10).toString('hex');
+        const filename = `${fileHash}-${file.originalname}`;
+
+        return callback(null, filename);
+      },
+    }),
+  },
+  config: {
+    disk: {},
+    aws: {
+      bucket: 'app-gobarber',
+    },
+  },
+} as IUploadConfig;
+```
+
+E nas entities, vamos fazer
+```ts
+@Entity('users')
+export default class User {
+  //...
+  @Expose({ name: 'avatar_url' })
+  getAvatarUrl(): string | null {
+    if (!this.avatar) {
+      return null;
+    }
+    switch (uploadConfig.driver) {
+      case 'disk':
+        return `${process.env.APP_API_URL}/files/${this.avatar}`;
+      case 's3':
+        return `https://${uploadConfig.config.aws.bucket}.s3.amazonaws.com/${this.avatar}`;
+      default:
+        return null;
+    }
+  }
+}
+```
+
+Testamos e vemos se o link fornecido abre a imagem no navegador. Depois de dar certo, temos que alterar de volta o `.env` para `disk` enquanto estivermos desenvolvendo.
