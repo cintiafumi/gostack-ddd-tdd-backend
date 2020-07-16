@@ -1214,3 +1214,66 @@ class ListProviderAppointmentsService {
     return appointments;
   }
 ```
+
+## Cache lista de providers
+Vamos adicionar o cache da lista de providers.
+```ts
+class ListProvidersService {
+  constructor(
+    @inject('UsersRepository')
+    private usersRepository: IUsersRepository,
+
+    @inject('CacheProvider')
+    private cacheProvider: ICacheProvider,
+  ) {}
+
+  public async execute({ user_id }: IRequest): Promise<User[]> {
+    let users = await this.cacheProvider.recover<User[]>(
+      `providers-list:${user_id}`,
+    );
+
+    if (!users) {
+      users = await this.usersRepository.findAllProviders({
+        except_user_id: user_id,
+      });
+      console.log('A query no banco foi feita.');
+
+      await this.cacheProvider.save(`providers-list:${user_id}`, users);
+    }
+    return users;
+  }
+}
+```
+
+Deu alguns erros de tipagem e consertaremos
+```ts
+export default interface ICacheProvider {
+  save(key: string, value: any): Promise<void>;
+  recover<T>(key: string): Promise<T | null>;
+  invalidate(key: string): Promise<void>;
+}
+```
+
+E
+```ts
+export default class RedisCacheProvider implements ICacheProvider {
+  //...
+  public async save(key: string, value: any): Promise<void> {
+    await this.client.set(key, JSON.stringify(value));
+  }
+
+  public async recover<T>(key: string): Promise<T | null> {
+    const data = await this.client.get(key);
+
+    if (!data) {
+      return null;
+    }
+
+    const parsedData = JSON.parse(data) as T;
+
+    return parsedData;
+  }
+```
+
+Testamos fazendo a requisição GET em `'/providers'` pelo Insomnia. Na primeira vez que fizemos a request, saiu o `console.log`, mas quando fizemos pela segunda vez, não apareceu porque já estava no cache.
+
