@@ -1277,3 +1277,48 @@ export default class RedisCacheProvider implements ICacheProvider {
 
 Testamos fazendo a requisição GET em `'/providers'` pelo Insomnia. Na primeira vez que fizemos a request, saiu o `console.log`, mas quando fizemos pela segunda vez, não apareceu porque já estava no cache.
 
+## Invalidando o cache de providers
+Na hora de criarmos um user, precisamos zerar o cache da listagem de providers, pois tem que adicionar mais um provider dentro dessa lista. Então, em `CreateUserService` vamos adicionar o provider de cache.
+```ts
+class CreateUserService {
+  constructor(
+    //...
+    @inject('CacheProvider')
+    private cacheProvider: ICacheProvider,
+  ) {}
+
+  public async execute({ name, email, password }: IRequest): Promise<User> {
+    //...
+    await this.cacheProvider.invalidatePrefix('providers-list');
+
+    return user;
+  }
+}
+```
+
+E adicionamos o método `invalidatePrefix` no models
+```ts
+export default interface ICacheProvider {
+  save(key: string, value: any): Promise<void>;
+  recover<T>(key: string): Promise<T | null>;
+  invalidate(key: string): Promise<void>;
+  invalidatePrefix(prefix: string): Promise<void>;
+}
+```
+
+E no implementations
+```ts
+export default class RedisCacheProvider implements ICacheProvider {
+  //...
+  public async invalidatePrefix(prefix: string): Promise<void> {
+    const keys = await this.client.keys(`${prefix}:*`);
+
+    const pipeline = this.client.pipeline();
+
+    keys.forEach(key => pipeline.del(key));
+
+    await pipeline.exec();
+  }
+```
+
+Para testar, vamos criar um novo user e fazer novamente o list providers pelo Insomnia.
