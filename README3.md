@@ -1322,3 +1322,64 @@ export default class RedisCacheProvider implements ICacheProvider {
 ```
 
 Para testar, vamos criar um novo user e fazer novamente o list providers pelo Insomnia.
+
+## Cache de agendamento
+Iremos cachear os agendamentos de 1 dia de 1 prestador. Em `ListProviderAppointmentsService`
+```ts
+//...
+    const cacheKey = `provider-appointments:${provider_id}:${year}-${month}-${day}`;
+
+    let appointments = await this.cacheProvider.recover<Appointment[]>(cacheKey);
+
+    if (!appointments) {
+      appointments = await this.appointmentsRepository.findAllInDayFromProvider(
+        {
+          provider_id,
+          year,
+          month,
+          day,
+        },
+      );
+      await this.cacheProvider.save(cacheKey, appointments);
+    }
+
+    console.log('Buscou do banco');
+```
+
+Adicionamos em `CreateAppointmentService`
+```ts
+//...
+    await this.cacheProvider.invalidate(
+      `provider-appointments:${provider_id}:${format(
+        appointmentDate,
+        'yyyy-M-d',
+      )}`,
+    );
+```
+
+E no `RedisCacheProvider`, adicionamos o método `invalidate`
+```ts
+  public async invalidate(key: string): Promise<void> {
+    await this.client.del(key);
+  }
+```
+
+Obs: removemos o `parsedDate` do `AppointmentsController` pois já estamos validando pelo `Joi` na rota.
+```ts
+export default class AppointmentsController {
+  public async create(request: Request, response: Response): Promise<Response> {
+    const user_id = request.user.id;
+    const { provider_id, date } = request.body;
+
+    const createAppointment = container.resolve(CreateAppointmentService);
+
+    const appointment = await createAppointment.execute({
+      date,
+      user_id,
+      provider_id,
+    });
+
+    return response.json(appointment);
+  }
+}
+```
