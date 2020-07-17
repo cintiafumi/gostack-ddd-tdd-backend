@@ -1430,3 +1430,79 @@ export default class FakeCacheProvider implements ICacheProvider {
 
 Agora, vamos acertar os testes.
 
+## Express rate limit
+Para evitar ataques _Brutal force_ na nossa aplicação, vamos utilizar a biblioteca `rate-limiter-flexible`
+```bash
+yarn add rate-limiter-flexible
+```
+
+E vamos criar um arquivo `@shared/infra/http/middlewares/rateLimiter.ts`
+
+Faltou instalar o `redis`
+```bash
+yarn add redis
+yarn add -D @types/redis
+```
+
+```ts
+import { Request, Response, NextFunction } from 'express';
+import redis from 'redis';
+import { RateLimiterRedis } from 'rate-limiter-flexible';
+import AppError from '@shared/errors/AppError';
+
+const redisClient = redis.createClient({
+  host: process.env.REDIS_HOST,
+  port: Number(process.env.REDIS_PORT),
+  password: process.env.REDIS_PASS || undefined,
+});
+
+const limiter = new RateLimiterRedis({
+  storeClient: redisClient,
+  keyPrefix: 'ratelimit',
+  points: 5,
+  duration: 1,
+});
+
+export default async function rateLimiter(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    await limiter.consume(request.ip);
+
+    return next();
+  } catch (err) {
+    throw new AppError('Too many requests', 429);
+  }
+}
+```
+
+Vamos adicionar no `.env`
+```
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASS=
+```
+
+E mudar no `config/cache.ts`
+```ts
+  config: {
+    redis: {
+      host: process.env.REDIS_HOST,
+      port: process.env.REDIS_PORT,
+      password: process.env.REDIS_PASS || undefined,
+    },
+  },
+```
+
+Adicionamos no `server.ts` esse middleware
+```ts
+//...
+import rateLimiter from './middlewares/rateLimiter';
+//...
+app.use(rateLimiter);
+```
+
+Testamos no Insomnia usando um rate limit menor (ex: 5 requisições a cada 5 segundos) só para testar mesmo. E precisamos ver a mensagem de `Too many requests.`
