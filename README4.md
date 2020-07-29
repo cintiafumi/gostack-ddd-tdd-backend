@@ -37,3 +37,31 @@ Em `ListProviderMonthAvailabilityService` não estamos verificando se a data daq
       };
     });
 ```
+
+## Cliente dos agendamentos
+Precisamos capturar o avatar e o nome dos clientes agendados. Algumas formas de fazer isso:
+
+- `eager`: vai sempre trazer o dado junto na entity `Appointment`
+```ts
+  @ManyToOne(() => User, { eager: true })
+```
+
+- `lazy`: vai trazer como se fosse um objeto na entity `Appointment`. E depois podemos fazer: `const user = await appointments.user`.
+```ts
+  @ManyToOne(() => User, { lazy: true })
+```
+
+- `eager loading`: que vai fazer uma query só no banco. Vai trazer já todos users de uma vez. E fazemos isso diretamente no repositório `AppointmentsRepository`
+```ts
+//...
+    const appointments = await this.ormRepository.find({
+      where: {
+        provider_id,
+        date: Raw(
+          dateFieldName =>
+            `to_char(${dateFieldName}, 'MM-YYYY') = '${parsedMonth}-${year}'`,
+        ),
+      },
+      relations: ['user'],
+    });
+```
