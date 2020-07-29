@@ -18,3 +18,22 @@ Outro ajuste é que não estávamos verificando o `provider_id` quando verificá
 //...
 findByDate(date: Date, provider_id: string)
 ```
+
+## Dias indisponíveis no mês
+Em `ListProviderMonthAvailabilityService` não estamos verificando se a data daquele mês passou.
+```ts
+//...
+    const availability = eachDayArray.map(day => {
+      const compareDate = new Date(year, month - 1, day, 23, 59, 59);
+
+      const appointmentsInDay = appointments.filter(appointment => {
+        return getDate(appointment.date) === day;
+      });
+
+      return {
+        day,
+        available:
+          isAfter(compareDate, new Date()) && appointmentsInDay.length < 10,
+      };
+    });
+```
