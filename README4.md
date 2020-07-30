@@ -65,3 +65,8 @@ Precisamos capturar o avatar e o nome dos clientes agendados. Algumas formas de 
       relations: ['user'],
     });
 ```
+
+Somente modificando a rota em `SendForgotPasswordEmailService` para
+```ts
+          link: `${process.env.APP_WEB_URL}/reset-password?token=${token}`,
+```
