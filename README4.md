@@ -77,3 +77,14 @@ Somente modificando a rota em `SendForgotPasswordEmailService` para
 ```ts
           link: `${process.env.APP_WEB_URL}/reset-password?token=${token}`,
 ```
+
+---
+
+E vimos que algumas imagens não estavam carregando no front, então, voltamos para trocar a order em `server.ts`
+```ts
+app.use(cors());
+app.use(express.json());
+app.use('/files', express.static(uploadConfig.uploadFolder));
+app.use(rateLimiter); // deixar após o carregamento das imagens
+app.use(routes);
+```
