@@ -54,12 +54,19 @@ Precisamos capturar o avatar e o nome dos clientes agendados. Algumas formas de 
 - `eager loading`: que vai fazer uma query só no banco. Vai trazer já todos users de uma vez. E fazemos isso diretamente no repositório `AppointmentsRepository`
 ```ts
 //...
+  public async findAllInDayFromProvider({
+    provider_id,
+    day,
+    month,
+    year,
+  }: IFindAllInDayFromProviderDTO): Promise<Appointment[]> {
+    //...
     const appointments = await this.ormRepository.find({
       where: {
         provider_id,
         date: Raw(
           dateFieldName =>
-            `to_char(${dateFieldName}, 'MM-YYYY') = '${parsedMonth}-${year}'`,
+            `to_char(${dateFieldName}, 'DD-MM-YYYY') = '${parsedDay}-${parsedMonth}-${year}'`,
         ),
       },
       relations: ['user'],
